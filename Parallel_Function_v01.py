@@ -30,20 +30,20 @@ def logic_01_global_line(df_slice, window_name):
     
     # [Step 0] Pre-aggregation (전처리)
     # 목적: 1 Row = 1 Glass 보장 (Machine 정보로 인한 중복 제거)
-    # 가정: 동일 Glass 내 중복 행은 동일한 DEF_QTY를 가짐 (단순 복제)
+    # 가정: 동일 Glass 내 중복 행은 동일한 DEFECT_QTY를 가짐 (단순 복제)
     df_unique_glass = df_slice.groupby(
         ['MODEL', 'PROCESS', 'LINE', 'CODE', 'GLASS_ID'], 
         observed=True
-    )['DEF_QTY'].mean().reset_index()
+    )['DEFECT_QTY'].mean().reset_index()
     
     # [Step 1] Base Stats (Global Level)
     # 중복이 제거된 df_unique_glass를 사용하여 정확한 Mean, Std 산출
-    base_stats = df_unique_glass.groupby(['PROCESS', 'CODE'], observed=True)['DEF_QTY'].agg(['mean', 'std']).reset_index()
+    base_stats = df_unique_glass.groupby(['PROCESS', 'CODE'], observed=True)['DEFECT_QTY'].agg(['mean', 'std']).reset_index()
     base_stats.rename(columns={'mean': 'Global_Mean', 'std': 'Global_Std'}, inplace=True)
     
     # [Step 2] Line Stats (Line Level)
     # 이제 1 Row = 1 Glass이므로 count가 곧 정확한 Sample Size임
-    line_stats = df_unique_glass.groupby(['MODEL', 'PROCESS', 'LINE', 'CODE'], observed=True)['DEF_QTY'].agg(['mean', 'count']).reset_index()
+    line_stats = df_unique_glass.groupby(['MODEL', 'PROCESS', 'LINE', 'CODE'], observed=True)['DEFECT_QTY'].agg(['mean', 'count']).reset_index()
     line_stats.rename(columns={'mean': 'Line_Mean', 'count': 'Sample_Size'}, inplace=True)
     
     # [Step 3] Merge & Z-Score
@@ -77,15 +77,15 @@ def logic_02_local_unit(df_slice, window_name):
     df_unique_unit = df_slice.groupby(
         ['MODEL', 'PROCESS', 'LINE', 'MACHINE', 'MACHINE_NO', 'MACHINE_ID', 'CODE', 'GLASS_ID'], 
         observed=True
-    )['DEF_QTY'].mean().reset_index()
+    )['DEFECT_QTY'].mean().reset_index()
 
     # [Step 1] Local Benchmark (Line Level)
     # 해당 라인의 해당 공정(MACHINE Type) 평균 및 편차
-    line_base_stats = df_unique_unit.groupby(['PROCESS', 'LINE', 'MACHINE', 'CODE'], observed=True)['DEF_QTY'].agg(['mean', 'std']).reset_index()
+    line_base_stats = df_unique_unit.groupby(['PROCESS', 'LINE', 'MACHINE', 'CODE'], observed=True)['DEFECT_QTY'].agg(['mean', 'std']).reset_index()
     line_base_stats.rename(columns={'mean': 'Local_Mean', 'std': 'Local_Std'}, inplace=True)
     
     # [Step 2] Unit Stats
-    unit_stats = df_unique_unit.groupby(['MODEL', 'PROCESS', 'LINE', 'MACHINE', 'MACHINE_NO', 'MACHINE_ID', 'CODE'], observed=True)['DEF_QTY'].agg(['mean', 'count']).reset_index()
+    unit_stats = df_unique_unit.groupby(['MODEL', 'PROCESS', 'LINE', 'MACHINE', 'MACHINE_NO', 'MACHINE_ID', 'CODE'], observed=True)['DEFECT_QTY'].agg(['mean', 'count']).reset_index()
     unit_stats.rename(columns={'mean': 'Unit_Mean', 'count': 'Sample_Size'}, inplace=True)
     
     # [Step 3] Merge & Z-Score
@@ -114,14 +114,14 @@ def logic_03_short_term_volatility(df_slice, window_name):
     
     # [Step 0] 날짜 기준 Pre-aggregation
     # 일별 통계를 낼 때도 Glass 중복 제거 필요
-    df_unique = df_slice.groupby(['MODEL', 'PROCESS', 'LINE', 'MACHINE_ID', 'CODE', 'GLASS_ID', 'Timestamp'], observed=True)['DEF_QTY'].mean().reset_index()
+    df_unique = df_slice.groupby(['MODEL', 'PROCESS', 'LINE', 'MACHINE_ID', 'CODE', 'GLASS_ID', 'Timestamp'], observed=True)['DEFECT_QTY'].mean().reset_index()
     df_unique['Date'] = df_unique['Timestamp'].dt.date
     
     # 일별 평균 DPU 산출
-    daily_stats = df_unique.groupby(['MODEL', 'PROCESS', 'LINE', 'MACHINE_ID', 'CODE', 'Date'], observed=True)['DEF_QTY'].mean().reset_index()
+    daily_stats = df_unique.groupby(['MODEL', 'PROCESS', 'LINE', 'MACHINE_ID', 'CODE', 'Date'], observed=True)['DEFECT_QTY'].mean().reset_index()
     
     # 변동성(CV) 산출
-    volatility_stats = daily_stats.groupby(['MODEL', 'PROCESS', 'LINE', 'MACHINE_ID', 'CODE'], observed=True)['DEF_QTY'].agg(['std', 'mean', 'count']).reset_index()
+    volatility_stats = daily_stats.groupby(['MODEL', 'PROCESS', 'LINE', 'MACHINE_ID', 'CODE'], observed=True)['DEFECT_QTY'].agg(['std', 'mean', 'count']).reset_index()
     
     for _, row in volatility_stats.iterrows():
         if row['count'] < 3: continue  # 최소 3일치 데이터 필요
@@ -148,13 +148,13 @@ def logic_04_interaction_zscore(df_slice, window_name):
 
     # [Step 1] Line Level Basic Stats (Benchmark)
     # 라인 전체의 DPU 분포 계산 (중복 제거 후)
-    clean_line_df = target_df.groupby(['PROCESS', 'LINE', 'CODE', 'GLASS_ID'], observed=True)['DEF_QTY'].mean().reset_index()
-    line_stats = clean_line_df.groupby(['PROCESS', 'LINE', 'CODE'], observed=True)['DEF_QTY'].agg(['mean', 'std']).reset_index()
+    clean_line_df = target_df.groupby(['PROCESS', 'LINE', 'CODE', 'GLASS_ID'], observed=True)['DEFECT_QTY'].mean().reset_index()
+    line_stats = clean_line_df.groupby(['PROCESS', 'LINE', 'CODE'], observed=True)['DEFECT_QTY'].agg(['mean', 'std']).reset_index()
     line_stats.rename(columns={'mean': 'Line_Mean', 'std': 'Line_Std'}, inplace=True)
 
     # [Step 2] Combination Data Construction
     # VCD와 SHP 정보를 결합 (Glass ID 기준)
-    mini_df = target_df[['Glass_ID', 'MODEL', 'PROCESS', 'LINE', 'CODE', 'MACHINE', 'MACHINE_NO', 'DEF_QTY']]
+    mini_df = target_df[['Glass_ID', 'MODEL', 'PROCESS', 'LINE', 'CODE', 'MACHINE', 'MACHINE_NO', 'DEFECT_QTY']]
     
     vcd_df = mini_df[mini_df['MACHINE'] == 'VCD'][['Glass_ID', 'MACHINE_NO']].rename(columns={'MACHINE_NO': 'VCD_NO'})
     shp_df = mini_df[mini_df['MACHINE'] == 'SHP'][['Glass_ID', 'MACHINE_NO']].rename(columns={'MACHINE_NO': 'SHP_NO'})
@@ -164,12 +164,12 @@ def logic_04_interaction_zscore(df_slice, window_name):
     # Inner Join으로 VCD, SHP를 모두 거친 Glass만 추출
     combo_df = pd.merge(vcd_df, shp_df, on='Glass_ID', how='inner')
     
-    # 메타 정보 및 DEF_QTY 결합 (Glass 중복 제거된 메타 사용)
-    meta_df = clean_line_df[['Glass_ID', 'MODEL', 'PROCESS', 'LINE', 'CODE', 'DEF_QTY']]
+    # 메타 정보 및 DEFECT_QTY 결합 (Glass 중복 제거된 메타 사용)
+    meta_df = clean_line_df[['Glass_ID', 'MODEL', 'PROCESS', 'LINE', 'CODE', 'DEFECT_QTY']]
     final_df = pd.merge(combo_df, meta_df, on='Glass_ID', how='inner')
 
     # 조합별 통계 산출
-    combo_stats = final_df.groupby(['MODEL', 'PROCESS', 'LINE', 'CODE', 'VCD_NO', 'SHP_NO'], observed=True)['DEF_QTY'].agg(['mean', 'count']).reset_index()
+    combo_stats = final_df.groupby(['MODEL', 'PROCESS', 'LINE', 'CODE', 'VCD_NO', 'SHP_NO'], observed=True)['DEFECT_QTY'].agg(['mean', 'count']).reset_index()
 
     # [Step 3] Compare Combo vs Line (Z-Score)
     merged = pd.merge(combo_stats, line_stats, on=['PROCESS', 'LINE', 'CODE'], how='left')
@@ -203,7 +203,7 @@ def logic_05_slot_correlation(df_slice, window_name):
     slot_df = slot_df.dropna(subset=['Slot_Int'])
     
     # 중복 제거 (Glass 단위)
-    df_unique = slot_df.groupby(['MODEL', 'PROCESS', 'LINE', 'CODE', 'GLASS_ID', 'Slot_Int'], observed=True)['DEF_QTY'].mean().reset_index()
+    df_unique = slot_df.groupby(['MODEL', 'PROCESS', 'LINE', 'CODE', 'GLASS_ID', 'Slot_Int'], observed=True)['DEFECT_QTY'].mean().reset_index()
 
     # Line 단위 Grouping
     grouped = df_unique.groupby(['MODEL', 'PROCESS', 'LINE', 'CODE'], observed=True)
@@ -212,11 +212,11 @@ def logic_05_slot_correlation(df_slice, window_name):
         if len(group) < MIN_SAMPLE_CNT * 2: continue 
         
         # 표준편차가 0이면 상관계수 계산 불가
-        if group['DEF_QTY'].std() == 0 or group['Slot_Int'].std() == 0:
+        if group['DEFECT_QTY'].std() == 0 or group['Slot_Int'].std() == 0:
             continue
 
         # 상관계수 (Pearson)
-        corr = group['Slot_Int'].corr(group['DEF_QTY'])
+        corr = group['Slot_Int'].corr(group['DEFECT_QTY'])
         
         if corr > CORR_THRESHOLD: # 양의 상관관계 (번호가 클수록 불량 높음)
             model, process, line, code = name
@@ -244,7 +244,7 @@ def run_screening(input_df=None):
             'MACHINE': 'category', 'MACHINE_NO': 'category', 'CODE': 'category', 'MACHINE_ID': 'category'
         }
         # 필요한 컬럼만 로딩하여 메모리 절약
-        use_cols = ['Glass_ID', 'MODEL', 'Timestamp', 'PROCESS', 'LINE', 'MACHINE', 'MACHINE_NO', 'MACHINE_ID', 'CODE', 'DEF_QTY']
+        use_cols = ['Glass_ID', 'MODEL', 'Timestamp', 'PROCESS', 'LINE', 'MACHINE', 'MACHINE_NO', 'MACHINE_ID', 'CODE', 'DEFECT_QTY']
         df = pd.read_csv(INPUT_FILE, dtype=dtype_map, usecols=use_cols, parse_dates=['Timestamp'])
     else:
         # SPOTFIRE 모드
