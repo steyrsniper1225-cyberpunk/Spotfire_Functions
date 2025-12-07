@@ -38,7 +38,7 @@ def logic_01_global_line(df_slice, window_name):
     
     # [Step 1] Base Stats (Global Level)
     # 중복이 제거된 df_unique_glass를 사용하여 정확한 Mean, Std 산출
-    base_stats = df_unique_glass.groupby(['PROCESS', 'CODE'], observed=True)['DEFECT_QTY'].agg(['mean', 'std']).reset_index()
+    base_stats = df_unique_glass.groupby(['MODEL', 'PROCESS', 'CODE'], observed=True)['DEFECT_QTY'].agg(['mean', 'std']).reset_index()
     base_stats.rename(columns={'mean': 'Global_Mean', 'std': 'Global_Std'}, inplace=True)
     
     # [Step 2] Line Stats (Line Level)
@@ -47,7 +47,7 @@ def logic_01_global_line(df_slice, window_name):
     line_stats.rename(columns={'mean': 'Line_Mean', 'count': 'Sample_Size'}, inplace=True)
     
     # [Step 3] Merge & Z-Score
-    merged = pd.merge(line_stats, base_stats, on=['PROCESS', 'CODE'], how='left')
+    merged = pd.merge(line_stats, base_stats, on=['MODEL', 'PROCESS', 'CODE'], how='left')
     merged['Global_Std'] = merged['Global_Std'].replace(0, 1e-9)
     merged['Z_Score'] = (merged['Line_Mean'] - merged['Global_Mean']) / merged['Global_Std']
     
@@ -56,8 +56,13 @@ def logic_01_global_line(df_slice, window_name):
         
         results.append({
             'Analysis_Type': 'LINE', 
-            'MODEL': row['MODEL'], 'PROCESS': row['PROCESS'], 'LINE': row['LINE'], 'MACHINE_ID': row['LINE'], 
-            'CODE': row['CODE'], 'Logic_ID': 'Logic01', 'Time_Window': window_name, 
+            'MODEL': row['MODEL'],
+            'PROCESS': row['PROCESS'],
+            'LINE': row['LINE'],
+            'MACHINE_ID': row['LINE'],
+            'CODE': row['CODE'],
+            'Logic_ID': 'Logic01',
+            'Time_Window': window_name, 
             'Sample_Size': int(row['Sample_Size']), 
             'Risk_Score': round(row['Z_Score'], 2),
             'Risk_Level': 'High' if row['Z_Score'] > 3.0 else ('Med' if row['Z_Score'] > 2.0 else 'Low'),
@@ -81,7 +86,7 @@ def logic_02_local_unit(df_slice, window_name):
 
     # [Step 1] Local Benchmark (Line Level)
     # 해당 라인의 해당 공정(MACHINE Type) 평균 및 편차
-    line_base_stats = df_unique_unit.groupby(['PROCESS', 'LINE', 'MACHINE', 'CODE'], observed=True)['DEFECT_QTY'].agg(['mean', 'std']).reset_index()
+    line_base_stats = df_unique_unit.groupby(['MODEL', 'PROCESS', 'LINE', 'MACHINE', 'CODE'], observed=True)['DEFECT_QTY'].agg(['mean', 'std']).reset_index()
     line_base_stats.rename(columns={'mean': 'Local_Mean', 'std': 'Local_Std'}, inplace=True)
     
     # [Step 2] Unit Stats
@@ -89,7 +94,7 @@ def logic_02_local_unit(df_slice, window_name):
     unit_stats.rename(columns={'mean': 'Unit_Mean', 'count': 'Sample_Size'}, inplace=True)
     
     # [Step 3] Merge & Z-Score
-    merged = pd.merge(unit_stats, line_base_stats, on=['PROCESS', 'LINE', 'MACHINE', 'CODE'], how='left')
+    merged = pd.merge(unit_stats, line_base_stats, on=['MODEL', 'PROCESS', 'LINE', 'MACHINE', 'CODE'], how='left')
     merged['Local_Std'] = merged['Local_Std'].replace(0, 1e-9)
     merged['Z_Score'] = (merged['Unit_Mean'] - merged['Local_Mean']) / merged['Local_Std']
     
@@ -98,9 +103,14 @@ def logic_02_local_unit(df_slice, window_name):
         if row['Z_Score'] < 1.0: continue # 의미 없는 하위 Unit 제외
         
         results.append({
-            'Analysis_Type': 'MACHINE', 
-            'MODEL': row['MODEL'], 'PROCESS': row['PROCESS'], 'LINE': row['LINE'], 'MACHINE_ID': row['MACHINE_ID'],
-            'CODE': row['CODE'], 'Logic_ID': 'Logic02', 'Time_Window': window_name,
+            'Analysis_Type': 'MACHINE',
+            'MODEL': row['MODEL'],
+            'PROCESS': row['PROCESS'],
+            'LINE': row['LINE'],
+            'MACHINE_ID': row['MACHINE_ID'],
+            'CODE': row['CODE'],
+            'Logic_ID': 'Logic02',
+            'Time_Window': window_name,
             'Sample_Size': int(row['Sample_Size']), 
             'Risk_Score': round(row['Z_Score'], 2),
             'Risk_Level': 'High' if row['Z_Score'] > 3.0 else ('Med' if row['Z_Score'] > 2.0 else 'Low'),
@@ -114,8 +124,8 @@ def logic_03_short_term_volatility(df_slice, window_name):
     
     # [Step 0] 날짜 기준 Pre-aggregation
     # 일별 통계를 낼 때도 Glass 중복 제거 필요
-    df_unique = df_slice.groupby(['MODEL', 'PROCESS', 'LINE', 'MACHINE_ID', 'CODE', 'GLASS_ID', 'Timestamp'], observed=True)['DEFECT_QTY'].mean().reset_index()
-    df_unique['Date'] = df_unique['Timestamp'].dt.date
+    df_unique = df_slice.groupby(['MODEL', 'PROCESS', 'LINE', 'MACHINE_ID', 'CODE', 'GLASS_ID', 'TIMESTAMP'], observed=True)['DEFECT_QTY'].mean().reset_index()
+    df_unique['Date'] = df_unique['TIMESTAMP'].dt.date
     
     # 일별 평균 DPU 산출
     daily_stats = df_unique.groupby(['MODEL', 'PROCESS', 'LINE', 'MACHINE_ID', 'CODE', 'Date'], observed=True)['DEFECT_QTY'].mean().reset_index()
@@ -130,8 +140,14 @@ def logic_03_short_term_volatility(df_slice, window_name):
         
         if cv > 1.0: # 변동계수가 1.0을 넘으면 불안정
              results.append({
-                'Analysis_Type': 'MACHINE', 'MODEL': row['MODEL'], 'PROCESS': row['PROCESS'], 'LINE': row['LINE'], 'MACHINE_ID': row['MACHINE_ID'],
-                'CODE': row['CODE'], 'Logic_ID': 'Logic03', 'Time_Window': window_name, 
+                'Analysis_Type': 'MACHINE',
+                'MODEL': row['MODEL'],
+                'PROCESS': row['PROCESS'],
+                'LINE': row['LINE'],
+                'MACHINE_ID': row['MACHINE_ID'],
+                'CODE': row['CODE'],
+                'Logic_ID': 'Logic03',
+                'Time_Window': window_name, 
                 'Sample_Size': int(row['count']), # 여기서는 일수(Days)를 의미
                 'Risk_Score': round(cv, 2), 
                 'Risk_Level': 'High' if cv > 2.0 else 'Med',
@@ -143,13 +159,13 @@ def logic_04_interaction_zscore(df_slice, window_name):
     """Logic 04: 교호작용 (VCD+SHP 조합) Z-Score 평가"""
     results = []
     # PHT 공정만 대상
-    target_df = df_slice[df_slice['PROCESS'].astype(str).str.contains('PHT')].copy()
+    target_df = df_slice[df_slice['MODEL', 'PROCESS'].astype(str).str.contains('PHT')].copy()
     if target_df.empty: return []
 
     # [Step 1] Line Level Basic Stats (Benchmark)
     # 라인 전체의 DPU 분포 계산 (중복 제거 후)
-    clean_line_df = target_df.groupby(['PROCESS', 'LINE', 'CODE', 'GLASS_ID'], observed=True)['DEFECT_QTY'].mean().reset_index()
-    line_stats = clean_line_df.groupby(['PROCESS', 'LINE', 'CODE'], observed=True)['DEFECT_QTY'].agg(['mean', 'std']).reset_index()
+    clean_line_df = target_df.groupby(['MODEL', 'PROCESS', 'LINE', 'CODE', 'GLASS_ID'], observed=True)['DEFECT_QTY'].mean().reset_index()
+    line_stats = clean_line_df.groupby(['MODEL', 'PROCESS', 'LINE', 'CODE'], observed=True)['DEFECT_QTY'].agg(['mean', 'std']).reset_index()
     line_stats.rename(columns={'mean': 'Line_Mean', 'std': 'Line_Std'}, inplace=True)
 
     # [Step 2] Combination Data Construction
@@ -172,7 +188,7 @@ def logic_04_interaction_zscore(df_slice, window_name):
     combo_stats = final_df.groupby(['MODEL', 'PROCESS', 'LINE', 'CODE', 'VCD_NO', 'SHP_NO'], observed=True)['DEFECT_QTY'].agg(['mean', 'count']).reset_index()
 
     # [Step 3] Compare Combo vs Line (Z-Score)
-    merged = pd.merge(combo_stats, line_stats, on=['PROCESS', 'LINE', 'CODE'], how='left')
+    merged = pd.merge(combo_stats, line_stats, on=['MODEL', 'PROCESS', 'LINE', 'CODE'], how='left')
     merged['Line_Std'] = merged['Line_Std'].replace(0, 1e-9)
     merged['Z_Score'] = (merged['mean'] - merged['Line_Mean']) / merged['Line_Std']
 
@@ -182,8 +198,14 @@ def logic_04_interaction_zscore(df_slice, window_name):
         if row['Z_Score'] > 2.0: 
             combo_name = f"{row['LINE']}_VCD{row['VCD_NO']}+SHP{row['SHP_NO']}"
             results.append({
-                'Analysis_Type': 'INTERACTION', 'MODEL': row['MODEL'], 'PROCESS': row['PROCESS'], 'LINE': row['LINE'], 'MACHINE_ID': combo_name,
-                'CODE': row['CODE'], 'Logic_ID': 'Logic04', 'Time_Window': window_name,
+                'Analysis_Type': 'INTERACTION',
+                'MODEL': row['MODEL'],
+                'PROCESS': row['PROCESS'],
+                'LINE': row['LINE'],
+                'MACHINE_ID': combo_name,
+                'CODE': row['CODE'],
+                'Logic_ID': 'Logic04',
+                'Time_Window': window_name,
                 'Sample_Size': int(row['count']), 
                 'Risk_Score': round(row['Z_Score'], 2), 
                 'Risk_Level': 'High' if row['Z_Score'] > 3.0 else 'Med',
@@ -195,7 +217,7 @@ def logic_05_slot_correlation(df_slice, window_name):
     """Logic 05: Slot 번호와 Defect 간의 상관관계 분석"""
     results = []
     # CST_SLOT 데이터만 필터링
-    slot_df = df_slice[df_slice['MACHINE'] == 'CST_SLOT'].copy()
+    slot_df = df_slice[df_slice['MODEL', 'MACHINE'] == 'CST_SLOT'].copy()
     if slot_df.empty: return []
     
     # MACHINE_NO를 숫자로 변환 (분석용)
@@ -221,9 +243,14 @@ def logic_05_slot_correlation(df_slice, window_name):
         if corr > CORR_THRESHOLD: # 양의 상관관계 (번호가 클수록 불량 높음)
             model, process, line, code = name
             results.append({
-                'Analysis_Type': 'MACHINE', 'MODEL': model, 'PROCESS': process, 'LINE': line, 
+                'Analysis_Type': 'MACHINE',
+                'MODEL': model,
+                'PROCESS': process,
+                'LINE': line, 
                 'MACHINE_ID': f"{line}_CST_SLOT_TREND", 
-                'CODE': code, 'Logic_ID': 'Logic05', 'Time_Window': window_name,
+                'CODE': code,
+                'Logic_ID': 'Logic05',
+                'Time_Window': window_name,
                 'Sample_Size': len(group), 
                 'Risk_Score': round(corr, 2),
                 'Risk_Level': 'High' if corr > 0.5 else 'Med',
@@ -244,14 +271,14 @@ def run_screening(input_df=None):
             'MACHINE': 'category', 'MACHINE_NO': 'category', 'CODE': 'category', 'MACHINE_ID': 'category'
         }
         # 필요한 컬럼만 로딩하여 메모리 절약
-        use_cols = ['Glass_ID', 'MODEL', 'Timestamp', 'PROCESS', 'LINE', 'MACHINE', 'MACHINE_NO', 'MACHINE_ID', 'CODE', 'DEFECT_QTY']
-        df = pd.read_csv(INPUT_FILE, dtype=dtype_map, usecols=use_cols, parse_dates=['Timestamp'])
+        use_cols = ['Glass_ID', 'MODEL', 'TIMESTAMP', 'PROCESS', 'LINE', 'MACHINE', 'MACHINE_NO', 'MACHINE_ID', 'CODE', 'DEFECT_QTY']
+        df = pd.read_csv(INPUT_FILE, dtype=dtype_map, usecols=use_cols, parse_dates=['TIMESTAMP'])
     else:
         # SPOTFIRE 모드
         print("[Mode: SPOTFIRE] Processing Input Data Table...")
         df = input_df.copy()
-        if df['Timestamp'].dtype == 'object':
-            df['Timestamp'] = pd.to_datetime(df['Timestamp'])
+        if df['TIMESTAMP'].dtype == 'object':
+            df['TIMESTAMP'] = pd.to_datetime(df['TIMESTAMP'])
         
         # Category 변환 (속도 최적화)
         for c in ['MODEL', 'PROCESS', 'LINE', 'MACHINE', 'MACHINE_NO', 'CODE']:
@@ -262,7 +289,7 @@ def run_screening(input_df=None):
     
     # [수정] CrossTable과 일치시키기 위해 시간(Time) 제거 후 날짜(Date)만 사용
     # 가장 최근 데이터의 날짜 00:00:00 기준
-    max_date = df['Timestamp'].max().floor('D')
+    max_date = df['TIMESTAMP'].max().floor('D')
     
     print(f"Data Loaded: {len(df)} rows. Max Date: {max_date}")
 
@@ -271,7 +298,7 @@ def run_screening(input_df=None):
         start_date = max_date - timedelta(days=days)
         
         # 해당 날짜 00:00:00 포함 이후 모든 데이터
-        df_slice = df[df['Timestamp'] >= start_date].copy()
+        df_slice = df[df['TIMESTAMP'] >= start_date].copy()
         
         if df_slice.empty: continue
         
