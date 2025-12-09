@@ -98,6 +98,7 @@ if not target_rows.empty:
         window_code = row['Time_Window'] # ex: '01W'
         
         # 기간(Days) 계산 (Dictionary에서 조회, 없으면 기본값 7일)
+        # AMDRPR_Timekey -> TIMESTAMP 컬럼을 항상 기준으로 써야될 듯
         days_to_look_back = TIME_WINDOWS_MAP.get(window_code, 7)
         
         # B. History 테이블에서 기준 시간(Anchor Time) 설정
