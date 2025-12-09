@@ -65,7 +65,7 @@ def logic_01_global_line(df_slice, window_name):
             'Time_Window': window_name, 
             'Sample_Size': int(row['Sample_Size']), 
             'Risk_Score': round(row['Z_Score'], 2),
-            'Risk_Level': 'High' if row['Z_Score'] > 3.0 else ('Med' if row['Z_Score'] > 2.0 else 'Low'),
+            'Risk_Level': 'High' if row['Z_Score'] > 2.0 else ('Med' if row['Z_Score'] > 1.0 else 'Low'),
             'Detail_Msg': f"Line DPU {row['Line_Mean']:.2f} (Global {row['Global_Mean']:.2f})"
         })
     return results
@@ -100,7 +100,6 @@ def logic_02_local_unit(df_slice, window_name):
     
     for _, row in merged.iterrows():
         if row['Sample_Size'] < MIN_SAMPLE_CNT: continue
-        if row['Z_Score'] < 1.0: continue # 의미 없는 하위 Unit 제외
         
         results.append({
             'Analysis_Type': 'MACHINE',
@@ -113,7 +112,7 @@ def logic_02_local_unit(df_slice, window_name):
             'Time_Window': window_name,
             'Sample_Size': int(row['Sample_Size']), 
             'Risk_Score': round(row['Z_Score'], 2),
-            'Risk_Level': 'High' if row['Z_Score'] > 3.0 else ('Med' if row['Z_Score'] > 2.0 else 'Low'),
+            'Risk_Level': 'High' if row['Z_Score'] > 2.0 else ('Med' if row['Z_Score'] > 1.0 else 'Low'),
             'Detail_Msg': f"Unit DPU {row['Unit_Mean']:.2f} (Local {row['Local_Mean']:.2f})"
         })
     return results
@@ -138,7 +137,7 @@ def logic_03_short_term_volatility(df_slice, window_name):
         if row['mean'] == 0: cv = 0
         else: cv = row['std'] / row['mean']
         
-        if cv > 1.0: # 변동계수가 1.0을 넘으면 불안정
+        if cv > 2.0: # 변동계수가 1.0을 넘으면 불안정
              results.append({
                 'Analysis_Type': 'MACHINE',
                 'MODEL': row['MODEL'],
@@ -150,7 +149,7 @@ def logic_03_short_term_volatility(df_slice, window_name):
                 'Time_Window': window_name, 
                 'Sample_Size': int(row['count']), # 여기서는 일수(Days)를 의미
                 'Risk_Score': round(cv, 2), 
-                'Risk_Level': 'High' if cv > 2.0 else 'Med',
+                'Risk_Level': 'High' if cv > 3.0 else ('Med' if row['Z_Score'] > 2.0 else 'Low'),
                 'Detail_Msg': f"Unstable (CV {cv:.1f}, Std {row['std']:.2f})"
             })
     return results
@@ -208,7 +207,7 @@ def logic_04_interaction_zscore(df_slice, window_name):
                 'Time_Window': window_name,
                 'Sample_Size': int(row['count']), 
                 'Risk_Score': round(row['Z_Score'], 2), 
-                'Risk_Level': 'High' if row['Z_Score'] > 3.0 else 'Med',
+                'Risk_Level': 'High' if row['Z_Score'] > 3.0 else ('Med' if row['Z_Score'] > 2.0 else 'Low'),
                 'Detail_Msg': f"Inter. DPU {row['mean']:.2f} (Line {row['Line_Mean']:.2f})"
             })
     return results
