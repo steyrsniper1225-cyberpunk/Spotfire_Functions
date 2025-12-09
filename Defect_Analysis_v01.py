@@ -1,5 +1,6 @@
 import pandas as pd
 import numpy as np
+from datetime import timedelta
 
 # --------------------------------------------------------------------------------
 # 1. [Source Mapping] Spotfire에서 넘겨받은 9개의 테이블을 Dictionary로 구조화
@@ -70,8 +71,9 @@ def detect_pattern(df_subset):
 # --------------------------------------------------------------------------------
 
 stacked_data = []
+delta_hours = 1 # Screening Master Time Window 커버 범위
 
-# (1) Filtering Criteria: Risk Score > 2.0 AND Risk Level == 'Med'
+# (1) Filtering Target Rows (Risk Score 조건)
 target_rows = Screening_Master[
     (Screening_Master['Risk_Score'] > 2.0) & 
     (Screening_Master['Risk_Level'] == 'Med')
@@ -80,41 +82,46 @@ target_rows = Screening_Master[
 if not target_rows.empty:
     for idx, row in target_rows.iterrows():
         
-        # A. Key 정보 추출
-        target_code = row['CODE']      # ex: 'GAT-PK'
-        target_time = row['Time_Window'] 
-        machine_id = row['MACHINE_ID'] # ex: 'PLN1PHT01'
+        # A. Screening 조건 추출
+        target_code = row['CODE']      
+        target_machine = row['MACHINE_ID'] # 범인 설비 (ex: PLN1PHT01)
         
-        # B. Source Selection (Dictionary에서 해당 코드의 DF 선택)
-        source_df = source_data_dict.get(target_code)
+        start_time = pd.to_datetime(row['Time_Window'])
+        end_time = start_time + timedelta(hours=delta_hours)
         
-        if source_df is not None and not source_df.empty:
+        # B. [NEW] History 테이블 조회 -> Target Glass ID 리스트 확보
+        # 조건: 지정된 시간(Time_Window) 내에 + 지정된 설비(MACHINE_ID)를 거친 Glass
+        
+        target_history = History[
+            (History['MACHINE_ID'] == target_machine) &
+            (History['TIMESTAMP'] >= start_time) &
+            (History['TIMESTAMP'] < end_time)
+        ]
+        
+        # 해당 설비를 거친 Glass ID 목록 추출 (중복 제거)
+        target_glass_ids = target_history['Glass_ID'].unique()
+        
+        if len(target_glass_ids) > 0:
             
-            # C. In-Memory Filtering (DB Query 대체)
-            # 조건 1: Time Window가 일치하는가? (Time Format 주의 필요)
-            # 조건 2: 해당 설비(MACHINE or LINE)를 거쳤는가?
-            # 주의: 원본 Defect Table에 설비 ID 컬럼이 있어야 함. 
-            # 만약 없다면 Screening Logic에서 사용된 이력 정보를 활용해야 함.
+            # C. Defect Data Fetching
+            source_df = source_data_dict.get(target_code)
             
-            # 가정: 원본 Defect Table에 [EQP_ID] 컬럼이 있거나, 
-            # [TIMESTAMP]만으로 매칭해야 하는 경우 로직 수정 필요.
-            # 여기서는 TIMESTAMP와 LINE 정보로 필터링한다고 가정.
-            
-            mask = (
-                (source_df['TIMESTAMP'] == target_time) &  # 실제 구현 시 범위(Range) 매칭 권장
-                (source_df['LINE'] == row['LINE'])         # Line 단위 1차 필터링
-            )
-            
-            df_chunk = source_df.loc[mask].copy()
-            
-            if not df_chunk.empty:
-                # D. Narrow Mapping & Processing
-                df_chunk['TARGET_EQP_ID'] = machine_id
+            if source_df is not None and not source_df.empty:
                 
-                # Pattern Labeling
-                df_chunk['PATTERN_LABEL'] = detect_pattern(df_chunk)
+                # D. Glass ID 기반 Filtering (정확도 100%)
+                # 기존의 Time 기반 필터링을 Glass ID 매칭으로 변경
+                mask = source_df['Glass_ID'].isin(target_glass_ids)
                 
-                stacked_data.append(df_chunk)
+                df_chunk = source_df.loc[mask].copy()
+                
+                if not df_chunk.empty:
+                    # E. Narrow Mapping
+                    df_chunk['TARGET_EQP_ID'] = target_machine
+                    
+                    # Pattern Labeling
+                    df_chunk['PATTERN_LABEL'] = detect_pattern(df_chunk)
+                    
+                    stacked_data.append(df_chunk)
 
 # (2) Final Concatenation
 if stacked_data:
