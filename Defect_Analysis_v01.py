@@ -3,9 +3,20 @@ import numpy as np
 from datetime import timedelta
 
 # --------------------------------------------------------------------------------
-# 1. [Source Mapping] Spotfire에서 넘겨받은 9개의 테이블을 Dictionary로 구조화
+# 1. [Settings] Time Window Code Mapping Definition
 # --------------------------------------------------------------------------------
-# script input 변수명은 아래 key와 동일하게 설정했다고 가정합니다.
+# 사용자가 정의한 Time Window 코드와 실제 일(Day) 수 매핑
+TIME_WINDOWS_MAP = {
+    '01W': 7,
+    '02W': 14,
+    '03W': 21,
+    '01M': 30,
+    '03M': 90,
+}
+
+# --------------------------------------------------------------------------------
+# 2. [Source Mapping] Spotfire Input Data Tables
+# --------------------------------------------------------------------------------
 source_data_dict = {
     'GAT-PK': dt_GAT_PK,
     'TM1-PK': dt_TM1_PK,
@@ -19,7 +30,7 @@ source_data_dict = {
 }
 
 # --------------------------------------------------------------------------------
-# 2. [Pattern Labeling Logic] (이전과 동일)
+# 3. [Pattern Labeling Logic] (이전과 동일)
 # --------------------------------------------------------------------------------
 def detect_pattern(df_subset):
     """
@@ -67,11 +78,10 @@ def detect_pattern(df_subset):
     return "Random" # Default
 
 # --------------------------------------------------------------------------------
-# 3. [Main Logic] In-Memory Filtering & Stacking
+# 4. [Main Logic] Time Code Parsing & History Matching
 # --------------------------------------------------------------------------------
 
 stacked_data = []
-delta_hours = 1 # Screening Master Time Window 커버 범위
 
 # (1) Filtering Target Rows (Risk Score 조건)
 target_rows = Screening_Master[
@@ -82,52 +92,60 @@ target_rows = Screening_Master[
 if not target_rows.empty:
     for idx, row in target_rows.iterrows():
         
-        # A. Screening 조건 추출
+        # A. Key 정보 및 Time Window 파싱
         target_code = row['CODE']      
-        target_machine = row['MACHINE_ID'] # 범인 설비 (ex: PLN1PHT01)
+        target_machine = row['MACHINE_ID'] 
+        window_code = row['Time_Window'] # ex: '01W'
         
-        start_time = pd.to_datetime(row['Time_Window'])
-        end_time = start_time + timedelta(hours=delta_hours)
+        # 기간(Days) 계산 (Dictionary에서 조회, 없으면 기본값 7일)
+        days_to_look_back = TIME_WINDOWS_MAP.get(window_code, 7)
         
-        # B. [NEW] History 테이블 조회 -> Target Glass ID 리스트 확보
-        # 조건: 지정된 시간(Time_Window) 내에 + 지정된 설비(MACHINE_ID)를 거친 Glass
+        # B. History 테이블에서 기준 시간(Anchor Time) 설정
+        # 해당 설비의 가장 최근 기록을 기준으로 역산합니다.
+        # (만약 Screening_Master에 'Analysis_Date' 컬럼이 있다면 그걸 사용하는 것이 더 정확합니다)
+        machine_history = History[History['MACHINE_ID'] == target_machine]
         
-        target_history = History[
-            (History['MACHINE_ID'] == target_machine) &
-            (History['TIMESTAMP'] >= start_time) &
-            (History['TIMESTAMP'] < end_time)
-        ]
-        
-        # 해당 설비를 거친 Glass ID 목록 추출 (중복 제거)
-        target_glass_ids = target_history['Glass_ID'].unique()
-        
-        if len(target_glass_ids) > 0:
+        if not machine_history.empty:
+            # 기준 종료 시간: 해당 설비 이력의 마지막 시간 (최신)
+            anchor_end_time = machine_history['TIMESTAMP'].max()
+            # 기준 시작 시간: 종료 시간 - 기간
+            anchor_start_time = anchor_end_time - timedelta(days=days_to_look_back)
             
-            # C. Defect Data Fetching
-            source_df = source_data_dict.get(target_code)
+            # C. History Filtering (Time Range)
+            target_history_subset = machine_history[
+                (machine_history['TIMESTAMP'] >= anchor_start_time) &
+                (machine_history['TIMESTAMP'] <= anchor_end_time)
+            ]
             
-            if source_df is not None and not source_df.empty:
+            # D. Target Glass ID 확보
+            target_glass_ids = target_history_subset['Glass_ID'].unique()
+            
+            if len(target_glass_ids) > 0:
                 
-                # D. Glass ID 기반 Filtering (정확도 100%)
-                # 기존의 Time 기반 필터링을 Glass ID 매칭으로 변경
-                mask = source_df['Glass_ID'].isin(target_glass_ids)
+                # E. Defect Data Fetching
+                source_df = source_data_dict.get(target_code)
                 
-                df_chunk = source_df.loc[mask].copy()
-                
-                if not df_chunk.empty:
-                    # E. Narrow Mapping
-                    df_chunk['TARGET_EQP_ID'] = target_machine
+                if source_df is not None and not source_df.empty:
                     
-                    # Pattern Labeling
-                    df_chunk['PATTERN_LABEL'] = detect_pattern(df_chunk)
+                    # F. Glass ID 기반 Filtering (정확한 매핑)
+                    mask = source_df['Glass_ID'].isin(target_glass_ids)
+                    df_chunk = source_df.loc[mask].copy()
                     
-                    stacked_data.append(df_chunk)
+                    if not df_chunk.empty:
+                        # G. Narrow Mapping & Labeling
+                        df_chunk['TARGET_EQP_ID'] = target_machine
+                        df_chunk['PATTERN_LABEL'] = detect_pattern(df_chunk)
+                        
+                        # [Optional] 분석 기간 정보 추가 (디버깅용)
+                        df_chunk['ANALYSIS_WINDOW'] = window_code
+                        
+                        stacked_data.append(df_chunk)
 
-# (2) Final Concatenation
+# (2) Final Concatenation & Grid Generation
 if stacked_data:
     Map_Data = pd.concat(stacked_data, ignore_index=True)
     
-    # (3) Dual Grid Generation (Vectorized)
+    # Dual Grid Generation
     bin_size_x = 18.0
     bin_size_y = 15.0
     
@@ -152,9 +170,9 @@ if stacked_data:
     Map_Data['MACRO_ZONE'] = Map_Data['ZONE_Y'] + '-' + Map_Data['ZONE_X']
 
 else:
-    # 빈 껍데기 생성
+    # 빈 데이터테이블 스키마 생성
     Map_Data = pd.DataFrame(columns=[
         'Glass_ID', 'Panel_ID', 'DEF_CODE', 'TIMESTAMP', 
         'DEF_PNT_X', 'DEF_PNT_Y', 'TARGET_EQP_ID', 'PATTERN_LABEL',
-        'BIN_X', 'BIN_Y', 'ZONE_X', 'ZONE_Y', 'MACRO_ZONE'
+        'ANALYSIS_WINDOW', 'BIN_X', 'BIN_Y', 'ZONE_X', 'ZONE_Y', 'MACRO_ZONE'
     ])
