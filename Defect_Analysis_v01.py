@@ -161,12 +161,12 @@ def detect_pattern_features(glass_map_df, total_glass_count):
     # Threshold 설정 (예: 80% 이상 집중 시)
     TH_CONCENTRATION = 0.8
 
-    # 1. Corner Check (가장 우선)
+    # 3-A. Corner Check (가장 우선)
     # Align 틀어짐, 모서리 파손 등 명확한 기구적 이슈
     if ratios['Corner'] > TH_CONCENTRATION:
         return "Corner"
 
-    # 2. Directional Edge Check (상/하/좌/우)
+    # 3-B. Directional Edge Check (상/하/좌/우)
     # 특정 방향의 Guide Rail, Robot Handover, 노즐 편차 등
     directions = ['Left', 'Right', 'Top', 'Bottom']
     # 점유율이 가장 높은 방향 찾기
@@ -175,12 +175,12 @@ def detect_pattern_features(glass_map_df, total_glass_count):
     if ratios[best_dir] > TH_CONCENTRATION:
         return f"Edge_{best_dir}"  # 예: "Edge_Left"
 
-    # 3. Center Check
+    # 3-C. Center Check
     # 중앙부 집중 (Spin Dry 얼룩, 중앙 처짐 등)
     if ratios['Center'] > 0.5: # 중앙은 면적이 좁으므로 Threshold 완화 가능
         return "Center"
 
-    # 4. General Edge Check
+    # 3-D. General Edge Check
     # 특정 한 방향은 아니지만, 테두리 전반에 퍼진 경우 (예: 액자형 얼룩)
     # Edge Zone = 전체 - Center(5번)
     edge_total_ratio = 1.0 - (macro_counts.get(5, 0) / total_defects)
