@@ -17,7 +17,6 @@ GLASS_HEIGHT = 1500
 # Pattern Detection Thresholds (튜닝 필요)
 TH_SPOT_DENSITY = 5       # Micro Grid 내 5개 이상이면 Spot 후보
 TH_REPEATER_RATIO = 0.3   # 전체 Glass의 30% 이상 동일 좌표 발생 시 Repeater
-TH_LINE_ASPECT = 10.0     # 길이/너비 비율이 10배 이상이면 Line성
 
 # Window Mapping (Screening Master와 동일)
 WINDOWS = {
