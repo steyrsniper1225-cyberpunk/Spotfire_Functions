@@ -15,7 +15,6 @@ OUTPUT_FILE = "screening_result_vfinal.csv"
 # '1W': 7일, '2W': 14일 등 분석 기간 설정
 TIME_WINDOWS = {'1W': 7, '2W': 14}
 MIN_SAMPLE_CNT = 30    # 최소 표본 수 (Z-Score 신뢰성 확보용)
-CORR_THRESHOLD = 0.3   # Logic 05 상관계수 기준
 
 # ==========================================
 # 1. Logic Functions
@@ -239,7 +238,7 @@ def logic_05_slot_correlation(df_slice, window_name):
         # 상관계수 (Pearson)
         corr = group['Slot_Int'].corr(group['DEFECT_QTY'])
         
-        if corr > CORR_THRESHOLD: # 양의 상관관계 (번호가 클수록 불량 높음)
+        if corr > 0.20:
             model, process, line, code = name
             results.append({
                 'Analysis_Type': 'MACHINE',
