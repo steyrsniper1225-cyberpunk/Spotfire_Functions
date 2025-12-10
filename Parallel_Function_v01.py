@@ -8,8 +8,8 @@ from datetime import datetime, timedelta
 # 'LOCAL' : 로컬 테스트용 / 'SPOTFIRE' : 실제 배포용
 EXECUTION_MODE = 'LOCAL' 
 
-INPUT_FILE = "dummy_screening_master_v2.csv"
-OUTPUT_FILE = "screening_result_vfinal.csv"
+INPUT_FILE = "dummy_screening_master_v2.xlsx"
+OUTPUT_FILE = "screening_result_vfinal.xlsx"
 
 # 분석 설정
 # '1W': 7일, '2W': 14일 등 분석 기간 설정
@@ -280,7 +280,7 @@ def run_screening(input_df=None):
         }
         # 필요한 컬럼만 로딩하여 메모리 절약
         use_cols = ['Glass_ID', 'MODEL', 'TIMESTAMP', 'PROCESS', 'LINE', 'MACHINE', 'MACHINE_NO', 'MACHINE_ID', 'CODE', 'DEFECT_QTY']
-        df = pd.read_csv(INPUT_FILE, dtype=dtype_map, usecols=use_cols, parse_dates=['TIMESTAMP'])
+        df = pd.read_excel(INPUT_FILE, dtype=dtype_map, usecols=use_cols, parse_dates=['TIMESTAMP'])
     else:
         # SPOTFIRE 모드
         print("[Mode: SPOTFIRE] Processing Input Data Table...")
@@ -327,7 +327,7 @@ def run_screening(input_df=None):
         result_df = result_df[final_cols]
         
         if EXECUTION_MODE == 'LOCAL':
-            result_df.to_csv(OUTPUT_FILE, index=False)
+            result_df.to_excel(OUTPUT_FILE, index=False)
             print(f"Analysis Complete. Saved to {OUTPUT_FILE}")
             print(result_df.head())
             return None
