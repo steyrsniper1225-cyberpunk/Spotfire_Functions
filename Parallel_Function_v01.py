@@ -149,7 +149,7 @@ def logic_03_short_term_volatility(df_slice, window_name):
                 'Time_Window': window_name, 
                 'Sample_Size': int(row['count']), # 여기서는 일수(Days)를 의미
                 'Risk_Score': round(cv, 2), 
-                'Risk_Level': 'High' if cv > 3.0 else ('Med' if row['Z_Score'] > 2.0 else 'Low'),
+                'Risk_Level': 'High' if cv > 3.0 else ('Med' if cv > 2.0 else 'Low'),
                 'Detail_Msg': f"Unstable (CV {cv:.1f}, Std {row['std']:.2f})"
             })
     return results
