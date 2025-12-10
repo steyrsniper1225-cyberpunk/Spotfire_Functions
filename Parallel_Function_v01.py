@@ -13,8 +13,14 @@ OUTPUT_FILE = "screening_result_vfinal.csv"
 
 # 분석 설정
 # '1W': 7일, '2W': 14일 등 분석 기간 설정
-TIME_WINDOWS = {'1W': 7, '2W': 14}
-MIN_SAMPLE_CNT = 30    # 최소 표본 수 (Z-Score 신뢰성 확보용)
+WINDOWS = {
+    '01W': 7,
+    '02W': 14,
+    '03W': 21,
+    '04W': 28,
+    '05W': 35,
+}
+MIN_SAMPLE_CNT = 30
 
 # ==========================================
 # 1. Logic Functions
@@ -43,7 +49,7 @@ def logic_01_global_line(df_slice, window_name):
     # [Step 2] Line Stats (Line Level)
     # 이제 1 Row = 1 Glass이므로 count가 곧 정확한 Sample Size임
     line_stats = df_unique_glass.groupby(['MODEL', 'PROCESS', 'LINE', 'CODE'], observed=True)['DEFECT_QTY'].agg(['mean', 'count']).reset_index()
-    line_stats.rename(columns={'mean': 'Line_Mean', 'count': 'Sample_Size'}, inplace=True)
+    line_stats.rename(columns={'mean': 'Line_Mean', 'count': 'DATACOUNT'}, inplace=True)
     
     # [Step 3] Merge & Z-Score
     merged = pd.merge(line_stats, base_stats, on=['MODEL', 'PROCESS', 'CODE'], how='left')
@@ -51,21 +57,22 @@ def logic_01_global_line(df_slice, window_name):
     merged['Z_Score'] = (merged['Line_Mean'] - merged['Global_Mean']) / merged['Global_Std']
     
     for _, row in merged.iterrows():
-        if row['Sample_Size'] < MIN_SAMPLE_CNT: continue
+        if row['DATACOUNT'] < MIN_SAMPLE_CNT: continue
+        if (row['Line_Mean'] - row['Global_Mean']) < 0.5: continue
         
         results.append({
-            'Analysis_Type': 'LINE', 
+            'TYPE': 'LINE', 
             'MODEL': row['MODEL'],
             'PROCESS': row['PROCESS'],
             'LINE': row['LINE'],
             'MACHINE_ID': row['LINE'],
             'CODE': row['CODE'],
-            'Logic_ID': 'Logic01',
-            'Time_Window': window_name, 
-            'Sample_Size': int(row['Sample_Size']), 
-            'Risk_Score': round(row['Z_Score'], 2),
-            'Risk_Level': 'High' if row['Z_Score'] > 2.0 else ('Med' if row['Z_Score'] > 1.0 else 'Low'),
-            'Detail_Msg': f"Line DPU {row['Line_Mean']:.2f} (Global {row['Global_Mean']:.2f})"
+            'LOGIC': 'L01',
+            'WINDOW': window_name, 
+            'DATACOUNT': int(row['DATACOUNT']), 
+            'INDEX': round(row['Z_Score'], 2),
+            'LEVEL': 'High' if row['Z_Score'] > 2.0 else ('Med' if row['Z_Score'] > 1.0 else 'Low'),
+            'NOTE': f"Line DPU {row['Line_Mean']:.2f} (Global {row['Global_Mean']:.2f})"
         })
     return results
 
@@ -90,7 +97,7 @@ def logic_02_local_unit(df_slice, window_name):
     
     # [Step 2] Unit Stats
     unit_stats = df_unique_unit.groupby(['MODEL', 'PROCESS', 'LINE', 'MACHINE', 'MACHINE_NO', 'MACHINE_ID', 'CODE'], observed=True)['DEFECT_QTY'].agg(['mean', 'count']).reset_index()
-    unit_stats.rename(columns={'mean': 'Unit_Mean', 'count': 'Sample_Size'}, inplace=True)
+    unit_stats.rename(columns={'mean': 'Unit_Mean', 'count': 'DATACOUNT'}, inplace=True)
     
     # [Step 3] Merge & Z-Score
     merged = pd.merge(unit_stats, line_base_stats, on=['MODEL', 'PROCESS', 'LINE', 'MACHINE', 'CODE'], how='left')
@@ -98,21 +105,22 @@ def logic_02_local_unit(df_slice, window_name):
     merged['Z_Score'] = (merged['Unit_Mean'] - merged['Local_Mean']) / merged['Local_Std']
     
     for _, row in merged.iterrows():
-        if row['Sample_Size'] < MIN_SAMPLE_CNT: continue
+        if row['DATACOUNT'] < MIN_SAMPLE_CNT: continue
+        if (row['Unit_Mean'] - row['Local_Mean']) < 1.0: continue
         
         results.append({
-            'Analysis_Type': 'MACHINE',
+            'TYPE': 'MACHINE',
             'MODEL': row['MODEL'],
             'PROCESS': row['PROCESS'],
             'LINE': row['LINE'],
             'MACHINE_ID': row['MACHINE_ID'],
             'CODE': row['CODE'],
-            'Logic_ID': 'Logic02',
-            'Time_Window': window_name,
-            'Sample_Size': int(row['Sample_Size']), 
-            'Risk_Score': round(row['Z_Score'], 2),
-            'Risk_Level': 'High' if row['Z_Score'] > 2.0 else ('Med' if row['Z_Score'] > 1.0 else 'Low'),
-            'Detail_Msg': f"Unit DPU {row['Unit_Mean']:.2f} (Local {row['Local_Mean']:.2f})"
+            'LOGIC': 'L02',
+            'WINDOW': window_name,
+            'DATACOUNT': int(row['DATACOUNT']), 
+            'INDEX': round(row['Z_Score'], 2),
+            'LEVEL': 'High' if row['Z_Score'] > 2.0 else ('Med' if row['Z_Score'] > 1.0 else 'Low'),
+            'NOTE': f"Unit DPU {row['Unit_Mean']:.2f} (Local {row['Local_Mean']:.2f})"
         })
     return results
 
@@ -134,22 +142,23 @@ def logic_03_short_term_volatility(df_slice, window_name):
     for _, row in volatility_stats.iterrows():
         if row['count'] < 3: continue  # 최소 3일치 데이터 필요
         if row['mean'] == 0: cv = 0
+        if row['std'] < 1.0: continue
         else: cv = row['std'] / row['mean']
         
-        if cv > 2.5:
+        if cv > 4.0:
              results.append({
-                'Analysis_Type': 'MACHINE',
+                'TYPE': 'MACHINE',
                 'MODEL': row['MODEL'],
                 'PROCESS': row['PROCESS'],
                 'LINE': row['LINE'],
                 'MACHINE_ID': row['MACHINE_ID'],
                 'CODE': row['CODE'],
-                'Logic_ID': 'Logic03',
-                'Time_Window': window_name, 
-                'Sample_Size': int(row['count']), # 여기서는 일수(Days)를 의미
-                'Risk_Score': round(cv, 2), 
-                'Risk_Level': 'High' if cv > 3.0 else ('Med' if cv > 2.0 else 'Low'),
-                'Detail_Msg': f"Unstable (CV {cv:.1f}, Std {row['std']:.2f})"
+                'LOGIC': 'L03',
+                'WINDOW': window_name, 
+                'DATACOUNT': int(row['count']), # 여기서는 일수(Days)를 의미
+                'INDEX': round(cv, 2), 
+                'LEVEL': 'High' if cv > 5.0 else ('Med' if cv > 4.5 else 'Low'),
+                'NOTE': f"Unstable (CV {cv:.2f}, Std {row['std']:.2f}, Avg {row['mean']:.2f})"
             })
     return results
 
@@ -192,22 +201,23 @@ def logic_04_interaction_zscore(df_slice, window_name):
 
     for _, row in merged.iterrows():
         if row['count'] < MIN_SAMPLE_CNT: continue
+        if (row['mean'] - row['Line_Mean']) < 0.5: continue
         
         if row['Z_Score'] > 0.1: 
             combo_name = f"{row['LINE']}_VCD{row['VCD_NO']}+SHP{row['SHP_NO']}"
             results.append({
-                'Analysis_Type': 'INTERACTION',
+                'TYPE': 'INTERACTION',
                 'MODEL': row['MODEL'],
                 'PROCESS': row['PROCESS'],
                 'LINE': row['LINE'],
                 'MACHINE_ID': combo_name,
                 'CODE': row['CODE'],
-                'Logic_ID': 'Logic04',
-                'Time_Window': window_name,
-                'Sample_Size': int(row['count']), 
-                'Risk_Score': round(row['Z_Score'], 2), 
-                'Risk_Level': 'High' if row['Z_Score'] > 3.0 else ('Med' if row['Z_Score'] > 2.0 else 'Low'),
-                'Detail_Msg': f"Inter. DPU {row['mean']:.2f} (Line {row['Line_Mean']:.2f})"
+                'LOGIC': 'L04',
+                'WINDOW': window_name,
+                'DATACOUNT': int(row['count']), 
+                'INDEX': round(row['Z_Score'], 2), 
+                'LEVEL': 'High' if row['Z_Score'] > 3.0 else ('Med' if row['Z_Score'] > 2.0 else 'Low'),
+                'NOTE': f"Inter. DPU {row['mean']:.2f} (Line {row['Line_Mean']:.2f})"
             })
     return results
 
@@ -241,18 +251,18 @@ def logic_05_slot_correlation(df_slice, window_name):
         if corr > 0.20:
             model, process, line, code = name
             results.append({
-                'Analysis_Type': 'MACHINE',
+                'TYPE': 'MACHINE',
                 'MODEL': model,
                 'PROCESS': process,
                 'LINE': line, 
                 'MACHINE_ID': f"{line}_CST_SLOT_TREND", 
                 'CODE': code,
-                'Logic_ID': 'Logic05',
-                'Time_Window': window_name,
-                'Sample_Size': len(group), 
-                'Risk_Score': round(corr, 2),
-                'Risk_Level': 'High' if corr > 0.5 else 'Med',
-                'Detail_Msg': f"Slot Trend Detected (Corr {corr:.2f})"
+                'LOGIC': 'L05',
+                'WINDOW': window_name,
+                'DATACOUNT': len(group), 
+                'INDEX': round(corr, 2),
+                'LEVEL': 'High' if corr > 0.5 else 'Med',
+                'NOTE': f"Slot Trend Detected (Corr {corr:.2f})"
             })
     return results
 
@@ -291,7 +301,7 @@ def run_screening(input_df=None):
     
     print(f"Data Loaded: {len(df)} rows. Max Date: {max_date}")
 
-    for window_name, days in TIME_WINDOWS.items():
+    for window_name, days in WINDOWS.items():
         # 시작일 계산 (날짜 기준)
         start_date = max_date - timedelta(days=(days - 1))
         
@@ -311,8 +321,8 @@ def run_screening(input_df=None):
     if all_results:
         result_df = pd.DataFrame(all_results)
         # 컬럼 순서 정렬
-        cols_order = ['Analysis_Type', 'MODEL', 'PROCESS', 'LINE', 'MACHINE_ID', 'CODE', 
-                      'Logic_ID', 'Time_Window', 'Sample_Size', 'Risk_Score', 'Risk_Level', 'Detail_Msg']
+        cols_order = ['TYPE', 'MODEL', 'PROCESS', 'LINE', 'MACHINE_ID', 'CODE', 
+                      'LOGIC', 'WINDOW', 'DATACOUNT', 'INDEX', 'LEVEL', 'NOTE']
         final_cols = [c for c in cols_order if c in result_df.columns]
         result_df = result_df[final_cols]
         
@@ -325,7 +335,7 @@ def run_screening(input_df=None):
             return result_df
     else:
         # 결과 없을 시 빈 테이블 리턴 (에러 방지)
-        return pd.DataFrame(columns=['Analysis_Type', 'Risk_Level', 'Detail_Msg'])
+        return pd.DataFrame(columns=['TYPE', 'LEVEL', 'NOTE'])
 
 # ==========================================
 # 3. Entry Point (Spotfire Wrapper)
