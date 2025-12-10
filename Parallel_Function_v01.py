@@ -137,7 +137,7 @@ def logic_03_short_term_volatility(df_slice, window_name):
         if row['mean'] == 0: cv = 0
         else: cv = row['std'] / row['mean']
         
-        if cv > 2.0: # 변동계수가 1.0을 넘으면 불안정
+        if cv > 2.5:
              results.append({
                 'Analysis_Type': 'MACHINE',
                 'MODEL': row['MODEL'],
