@@ -294,7 +294,7 @@ def run_screening(input_df=None):
 
     for window_name, days in TIME_WINDOWS.items():
         # 시작일 계산 (날짜 기준)
-        start_date = max_date - timedelta(days=days)
+        start_date = max_date - timedelta(days=(days - 1))
         
         # 해당 날짜 00:00:00 포함 이후 모든 데이터
         df_slice = df[df['TIMESTAMP'] >= start_date].copy()
