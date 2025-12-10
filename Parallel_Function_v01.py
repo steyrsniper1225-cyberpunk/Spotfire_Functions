@@ -194,7 +194,7 @@ def logic_04_interaction_zscore(df_slice, window_name):
     for _, row in merged.iterrows():
         if row['count'] < MIN_SAMPLE_CNT: continue
         
-        if row['Z_Score'] > 2.0: 
+        if row['Z_Score'] > 0.1: 
             combo_name = f"{row['LINE']}_VCD{row['VCD_NO']}+SHP{row['SHP_NO']}"
             results.append({
                 'Analysis_Type': 'INTERACTION',
