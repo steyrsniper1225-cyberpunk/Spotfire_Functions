@@ -1,178 +1,256 @@
 import pandas as pd
 import numpy as np
-from datetime import timedelta
+from datetime import datetime, timedelta
 
-# --------------------------------------------------------------------------------
-# 1. [Settings] Time Window Code Mapping Definition
-# --------------------------------------------------------------------------------
-# 사용자가 정의한 Time Window 코드와 실제 일(Day) 수 매핑
-TIME_WINDOWS_MAP = {
-    '01W': 7,
-    '02W': 14,
-    '03W': 21,
-    '01M': 30,
-    '03M': 90,
+# ==========================================
+# [Configuration] 분석 파라미터 및 Grid 설정
+# ==========================================
+# Micro Grid Size (mm)
+MICRO_GRID_W = 18.0
+MICRO_GRID_H = 15.0
+
+# Glass Size (Approximate for Macro Grid)
+# 좌표 범위가 -900~900(W=1800), -750~750(H=1500)이라고 가정
+GLASS_WIDTH = 1800
+GLASS_HEIGHT = 1500
+
+# Pattern Detection Thresholds (튜닝 필요)
+TH_SPOT_DENSITY = 5       # Micro Grid 내 5개 이상이면 Spot 후보
+TH_REPEATER_RATIO = 0.3   # 전체 Glass의 30% 이상 동일 좌표 발생 시 Repeater
+TH_LINE_ASPECT = 10.0     # 길이/너비 비율이 10배 이상이면 Line성
+
+# Window Mapping (Screening Master와 동일)
+WINDOWS = {
+    '01W': 7, '02W': 14, '03W': 21, '04W': 28, '05W': 35
 }
 
-# --------------------------------------------------------------------------------
-# 2. [Source Mapping] Spotfire Input Data Tables
-# --------------------------------------------------------------------------------
-source_data_dict = {
-    'GAT-PK': dt_GAT_PK,
-    'TM1-PK': dt_TM1_PK,
-    'XGT-PK': dt_XGT_PK,
-    'SD1-PK': dt_SD1_PK,
-    'SD2-PK': dt_SD2_PK,
-    'PLN1-FM': dt_PLN1_FM,
-    'PLN1-SM': dt_PLN1_SM,
-    'PLN2-FM': dt_PLN2_FM,
-    'PLN2-SM': dt_PLN2_SM
-}
+# ==========================================
+# 1. Helper Functions
+# ==========================================
 
-# --------------------------------------------------------------------------------
-# 3. [Pattern Labeling Logic] (이전과 동일)
-# --------------------------------------------------------------------------------
-def detect_pattern(df_subset):
+def get_target_glass_ids(screening_row, history_df):
     """
-    로드된 Defect 데이터군(Group)의 통계적 특징을 분석하여 
-    가장 지배적인 Pattern Label을 반환합니다.
+    Screening Master의 특정 행(Row) 정보를 받아
+    History 테이블에서 분석 대상 Glass ID 리스트를 추출
     """
-    if df_subset.empty:
-        return "None"
+    # 1. Parse Parameters
+    target_line = screening_row['LINE']
+    target_machine_id = screening_row['MACHINE_ID']
+    target_code = screening_row['CODE']
+    target_window = screening_row['WINDOW']
     
-    x = df_subset['DEF_PNT_X']
-    y = df_subset['DEF_PNT_Y']
-  
-    # 1. Repeater 감지 (동일 좌표 중복도)
-    # 소수점 좌표일 경우 반올림하여 비교하거나 Binning 후 비교 필요
-    # 여기서는 간단히 좌표 분산이 극도로 작은 군집이 있는지 확인
+    # 2. Date Filtering
+    days = WINDOWS.get(target_window, 7)
+    max_date = history_df['TIMESTAMP'].max()floor('D')
+    start_date = max_date - timedelta(days=(days - 1))
     
-    # 2. Corner/Edge 감지
-    # 데이터의 80% 이상이 외곽(Edge) 영역에 있는지 확인
-    is_edge_x = (x.abs() > 800)
-    is_edge_y = (y.abs() > 650)
-    if (is_edge_x | is_edge_y).mean() > 0.7:
-        return "Corner/Edge"
-      
-    # 3. Line Mura / Scratch (Linearity 확인)
-    std_x = x.std()
-    std_y = y.std()
+    # 3. Apply Filters
+    # History 테이블에서 [LINE], [MACHINE_ID], [CODE], [TIMESTAMP] 조건 검색
+    # 주의: MACHINE_ID가 Screening 결과에서 'LINE' 레벨로 나왔을 수도 있음 (L01 Logic)
     
-    # X분산이 작고 Y분산이 크면 -> Vertical Line
-    if std_y > (std_x * 5):
-        return "Line Mura (Vertical)"
+    mask = (history_df['TIMESTAMP'] >= start_date) & \
+           (history_df['CODE'] == target_code)
+    
+    # Logic L01(Line Level)인 경우 Machine ID 필터링 제외 가능, 
+    # 하지만 명확성을 위해 Screening 결과의 MACHINE_ID가 실제 설비면 필터링
+    if target_machine_id and (target_machine_id in history_df['MACHINE_ID'].unique()):
+        mask = mask & (history_df['MACHINE_ID'] == target_machine_id)
+    elif target_line:
+        mask = mask & (history_df['LINE'] == target_line)
+        
+    target_glasses = history_df.loc[mask, 'Glass_ID'].unique()
+    return target_glasses
 
-    # Y분산이 작고 X분산이 크면 -> Horizontal Line
-    if std_x > (std_y * 5):
-        return "Line Mura (Horizontal)"
+def apply_dual_grid(map_df):
+    """
+    Map 데이터에 Micro/Macro Grid 인덱스 부여
+    """
+    # [Micro Grid]
+    # 좌표 중심을 기준으로 Grid화 (좌표 + Offset) / Size
+    # 가정: 좌표계 중심이 (0,0)
+    map_df['Grid_X'] = np.floor((map_df['DEF_PNT_X'] + (GLASS_WIDTH/2)) / MICRO_GRID_W).astype(int)
+    map_df['Grid_Y'] = np.floor((map_df['DEF_PNT_Y'] + (GLASS_HEIGHT/2)) / MICRO_GRID_H).astype(int)
+    
+    # [Macro Grid] 3x3
+    # X구간: 0(Left), 1(Center), 2(Right)
+    # Y구간: 0(Bottom), 1(Middle), 2(Top)
+    def get_macro_idx(val, total_len):
+        norm = val + (total_len/2) # 0 ~ Total 변환
+        if norm < total_len / 3: return 0
+        elif norm < (total_len * 2) / 3: return 1
+        else: return 2
 
-    # 4. Spot (집중도 확인)
-    # Grid(100mm) 단위로 나누어 Max Density 확인
-    try:
-        heatmap, _, _ = np.histogram2d(x, y, bins=[18, 15]) # Coarse check
-        if (heatmap.max() / len(df_subset)) > 0.3: # 전체 점의 30% 이상이 한 칸에 뭉침
-            return "Spot"
-    except:
-        pass
+    map_df['Macro_X'] = map_df['DEF_PNT_X'].apply(lambda x: get_macro_idx(x, GLASS_WIDTH))
+    map_df['Macro_Y'] = map_df['DEF_PNT_Y'].apply(lambda y: get_macro_idx(y, GLASS_HEIGHT))
+    
+    # Macro Zone ID (1~9)
+    # 7 8 9
+    # 4 5 6
+    # 1 2 3
+    map_df['Macro_ID'] = (map_df['Macro_Y'] * 3) + map_df['Macro_X'] + 1
+    
+    return map_df
 
-    return "Random" # Default
+def detect_pattern_features(glass_map_df, total_glass_count):
+    """
+    단일 Glass 혹은 누적된 Map 데이터를 분석하여 패턴 Labeling 수행
+    """
+    patterns = []
+    
+    if glass_map_df.empty:
+        return "Normal"
 
-# --------------------------------------------------------------------------------
-# 4. [Main Logic] Time Code Parsing & History Matching
-# --------------------------------------------------------------------------------
+    # 1. Repeater Check (Micro Grid 기준)
+    # 여러 장의 Glass를 겹쳤을 때 동일 Grid에 반복 발생하는가?
+    grid_counts = glass_map_df.groupby(['Grid_X', 'Grid_Y']).size()
+    max_repeat = grid_counts.max()
+    
+    if total_glass_count > 5 and (max_repeat / total_glass_count) >= TH_REPEATER_RATIO:
+        return "Repeater"
 
-stacked_data = []
+    # 2. Line Mura Check (Vertical / Horizontal)
+    # 전체 Defect의 X 혹은 Y 표준편차가 매우 작으면서, 반대축으로 넓게 퍼짐
+    std_x = glass_map_df['DEF_PNT_X'].std()
+    std_y = glass_map_df['DEF_PNT_Y'].std()
+    range_x = glass_map_df['DEF_PNT_X'].max() - glass_map_df['DEF_PNT_X'].min()
+    range_y = glass_map_df['DEF_PNT_Y'].max() - glass_map_df['DEF_PNT_Y'].min()
+    
+    # 예외처리: 점이 1개면 std NaN
+    if pd.isna(std_x) or pd.isna(std_y): return "Spot"
 
-# (1) Filtering Target Rows (Risk Score 조건)
-target_rows = Screening_Master[
-    (Screening_Master['Risk_Score'] > 2.0) & 
-    (Screening_Master['Risk_Level'] == 'Med')
-]
+    # Vertical Line: X편차 작음, Y범위 큼
+    if std_x < MICRO_GRID_W and range_y > (GLASS_HEIGHT * 0.5):
+        return "Line_Vertical"
+    
+    # Horizontal Line: Y편차 작음, X범위 큼
+    if std_y < MICRO_GRID_H and range_x > (GLASS_WIDTH * 0.5):
+        return "Line_Horizontal"
 
-if not target_rows.empty:
+    # 3. Corner / Edge Check (Macro Grid)
+    # 가장자리에 Defect가 80% 이상 집중
+    edge_zones = [1, 2, 3, 4, 6, 7, 8, 9]
+    corner_zones = [1, 3, 7, 9]
+    
+    macro_counts = glass_map_df['Macro_ID'].value_counts()
+    total_defects = len(glass_map_df)
+    
+    edge_sum = sum([macro_counts.get(z, 0) for z in edge_zones])
+    corner_sum = sum([macro_counts.get(z, 0) for z in corner_zones])
+    
+    if (corner_sum / total_defects) > 0.8:
+        return "Corner"
+    if (edge_sum / total_defects) > 0.8:
+        return "Edge"
+
+    # 4. Cluster Analysis (Spot vs Scratch)
+    # Grid 밀집도가 높은지 확인
+    if max_repeat >= TH_SPOT_DENSITY:
+        # Aspect Ratio로 Spot/Scratch 구분
+        # 해당 Grid 주변부의 좌표 가져오기
+        top_grid = grid_counts.idxmax() # (x, y)
+        cluster_df = glass_map_df[
+            (glass_map_df['Grid_X'] == top_grid[0]) & 
+            (glass_map_df['Grid_Y'] == top_grid[1])
+        ]
+        if not cluster_df.empty:
+            c_range_x = cluster_df['DEF_PNT_X'].max() - cluster_df['DEF_PNT_X'].min()
+            c_range_y = cluster_df['DEF_PNT_Y'].max() - cluster_df['DEF_PNT_Y'].min()
+            
+            # 0으로 나누기 방지
+            ratio = (c_range_y / c_range_x) if c_range_x > 0 else 0
+            if ratio < 1: ratio = (c_range_x / c_range_y) if c_range_y > 0 else 0
+            
+            if ratio > 3.0: return "Scratch"
+            else: return "Spot"
+
+    return "Random" # 특이 패턴 없음
+
+# ==========================================
+# 2. Main Logic (Spotfire Entry Point)
+# ==========================================
+def run_map_analysis(input_screening, input_history, input_map):
+    """
+    input_screening: Screening Master 결과 (1 Row or Filtered Table)
+    input_history: 전체 History 테이블
+    input_map: 전체 Map 데이터 (Lazy Loading 흉내내기 위해 여기서 필터링)
+    """
+    
+    # 결과 담을 리스트
+    results = []
+
+    # [Step 1] Trigger Logic Check
+    # Spotfire에서 넘어온 Screening 데이터 중 조건 만족 행만 순회
+    # 조건: Index > 3.0 (High) OR (Index > 1.0 AND Level='Med') ??
+    # 사용자 요청: ([INDEX]>3.0 And [LEVEL]="Med") 
+    # -> 사실 Screening Logic상 Index>2.0이면 High이므로 이 조건은 모순일 수 있으나
+    #    요청하신 필터 조건을 그대로 구현 (혹은 OR 조건으로 완화 권장)
+    
+    # (안전장치) 조건이 너무 Strict하면 데이터가 없을 수 있으므로 
+    # Index > 3.0 인 High Level 전체를 대상으로 하거나, 필터링된 Input을 그대로 사용
+    target_rows = input_screening.copy()
+    
+    # 사용자 요청 필터 적용 (데이터가 있다면)
+    # condition = (target_rows['INDEX'] > 3.0) & (target_rows['LEVEL'] == 'Med')
+    # if condition.any():
+    #     target_rows = target_rows[condition]
+    
+    if target_rows.empty:
+        return pd.DataFrame({'Message': ['No Target Found']})
+
+    print(f"Analyzing {len(target_rows)} screening items...")
+
     for idx, row in target_rows.iterrows():
+        # [Step 2] Target Glass ID 식별
+        target_glasses = get_target_glass_ids(row, input_history)
         
-        # A. Key 정보 및 Time Window 파싱
-        target_code = row['CODE']      
-        target_machine = row['MACHINE_ID'] 
-        window_code = row['Time_Window'] # ex: '01W'
-        
-        # 기간(Days) 계산 (Dictionary에서 조회, 없으면 기본값 7일)
-        # ANDRPR_Timekey -> TIMESTAMP 컬럼을 항상 기준으로 써야될 듯
-        days_to_look_back = TIME_WINDOWS_MAP.get(window_code, 7)
-        
-        # B. History 테이블에서 기준 시간(Anchor Time) 설정
-        # 해당 설비의 가장 최근 기록을 기준으로 역산합니다.
-        machine_history = History[History['MACHINE_ID'] == target_machine]
-        
-        if not machine_history.empty:
-            # 기준 종료 시간: 해당 설비 이력의 마지막 시간 (최신)
-            anchor_end_time = machine_history['TIMESTAMP'].max()
-            # 기준 시작 시간: 종료 시간 - 기간
-            anchor_start_time = anchor_end_time - timedelta(days=days_to_look_back)
+        if len(target_glasses) == 0:
+            continue
             
-            # C. History Filtering (Time Range)
-            target_history_subset = machine_history[
-                (machine_history['TIMESTAMP'] >= anchor_start_time) &
-                (machine_history['TIMESTAMP'] <= anchor_end_time)
-            ]
+        # [Step 3] Map Data Load (Filtering)
+        # 해당 Glass ID를 가진 Map Data만 추출
+        current_map = input_map[input_map['Glass_ID'].isin(target_glasses)].copy()
+        
+        if current_map.empty:
+            continue
             
-            # D. Target Glass ID 확보
-            target_glass_ids = target_history_subset['Glass_ID'].unique()
-            
-            if len(target_glass_ids) > 0:
-                
-                # E. Defect Data Fetching
-                source_df = source_data_dict.get(target_code)
-                
-                if source_df is not None and not source_df.empty:
-                    
-                    # F. Glass ID 기반 Filtering (정확한 매핑)
-                    mask = source_df['Glass_ID'].isin(target_glass_ids)
-                    df_chunk = source_df.loc[mask].copy()
-                    
-                    if not df_chunk.empty:
-                        # G. Narrow Mapping & Labeling
-                        df_chunk['TARGET_EQP_ID'] = target_machine
-                        df_chunk['PATTERN_LABEL'] = detect_pattern(df_chunk)
-                        
-                        # [Optional] 분석 기간 정보 추가 (디버깅용)
-                        df_chunk['ANALYSIS_WINDOW'] = window_code
-                        
-                        stacked_data.append(df_chunk)
+        # [Step 4] Dual Grid 적용
+        current_map = apply_dual_grid(current_map)
+        
+        # [Step 5] Pattern Labeling
+        # 설비 기인성 분석이므로 '적층(Stacked)' 패턴이 중요함
+        # 모든 Glass의 점을 합쳐서 패턴을 분석
+        detected_pattern = detect_pattern_features(current_map, len(target_glasses))
+        
+        # [Step 6] 결과 생성
+        # 원본 Map 데이터에 분석 결과를 붙여서 리턴할 수도 있고,
+        # 요약된 통계만 리턴할 수도 있음. 여기서는 Map Row + Pattern Tag 리턴
+        current_map['Analyzed_Pattern'] = detected_pattern
+        current_map['Ref_Screening_Logic'] = row['LOGIC']
+        current_map['Ref_Machine'] = row['MACHINE_ID']
+        
+        results.append(current_map)
 
-# (2) Final Concatenation & Grid Generation
-if stacked_data:
-    Map_Data = pd.concat(stacked_data, ignore_index=True)
-    
-    # Dual Grid Generation
-    bin_size_x = 18.0
-    bin_size_y = 15.0
-    
-    Map_Data['BIN_X'] = np.floor(Map_Data['DEF_PNT_X'] / bin_size_x) * bin_size_x
-    Map_Data['BIN_Y'] = np.floor(Map_Data['DEF_PNT_Y'] / bin_size_y) * bin_size_y
-    
-    # Macro Zone Logic
-    conditions_x = [
-        (Map_Data['DEF_PNT_X'] < -300),
-        (Map_Data['DEF_PNT_X'] >= -300) & (Map_Data['DEF_PNT_X'] <= 300),
-        (Map_Data['DEF_PNT_X'] > 300)
-    ]
-    Map_Data['ZONE_X'] = np.select(conditions_x, ['Left', 'Center', 'Right'], default='Unknown')
-    
-    conditions_y = [
-        (Map_Data['DEF_PNT_Y'] < -250),
-        (Map_Data['DEF_PNT_Y'] >= -250) & (Map_Data['DEF_PNT_Y'] <= 250),
-        (Map_Data['DEF_PNT_Y'] > 250)
-    ]
-    Map_Data['ZONE_Y'] = np.select(conditions_y, ['Bottom', 'Middle', 'Top'], default='Unknown')
-    
-    Map_Data['MACRO_ZONE'] = Map_Data['ZONE_Y'] + '-' + Map_Data['ZONE_X']
+    # [Step 7] Final Merge
+    if len(results) > 0:
+        final_df = pd.concat(results, ignore_index=True)
+        # 필요한 컬럼만 정리
+        out_cols = [
+            'Glass_ID', 'Panel_ID', 'TIMESTAMP', 
+            'DEF_PNT_X', 'DEF_PNT_Y', 'CODE', 
+            'Grid_X', 'Grid_Y', 'Macro_ID', 
+            'Analyzed_Pattern', 'Ref_Machine'
+        ]
+        # 없는 컬럼 에러 방지
+        actual_cols = [c for c in out_cols if c in final_df.columns]
+        return final_df[actual_cols]
+    else:
+        return pd.DataFrame(columns=['Glass_ID', 'Analyzed_Pattern'])
 
-else:
-    # 빈 데이터테이블 스키마 생성
-    Map_Data = pd.DataFrame(columns=[
-        'Glass_ID', 'Panel_ID', 'DEF_CODE', 'TIMESTAMP', 
-        'DEF_PNT_X', 'DEF_PNT_Y', 'TARGET_EQP_ID', 'PATTERN_LABEL',
-        'ANALYSIS_WINDOW', 'BIN_X', 'BIN_Y', 'ZONE_X', 'ZONE_Y', 'MACRO_ZONE'
-    ])
+# ==========================================
+# 3. Execution (For Local Test)
+# ==========================================
+if __name__ == "__main__":
+    # Dummy Data 생성 및 테스트 코드는 생략함
+    # Spotfire에서는 아래와 같이 호출됨
+    # output_map_table = run_map_analysis(Screening_Master, History_Table, Map_Table)
+    pass
