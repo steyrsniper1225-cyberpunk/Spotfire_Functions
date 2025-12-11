@@ -33,6 +33,8 @@ def get_target_glass_ids(screening_row, history_df):
     History 테이블에서 분석 대상 Glass ID 리스트를 추출
     """
     # 1. Parse Parameters
+    target_model = screening_row['MODEL']
+    target_process = screening_row['PROCESS']
     target_line = screening_row['LINE']
     target_machine_id = screening_row['MACHINE_ID']
     target_code = screening_row['CODE']
@@ -47,8 +49,12 @@ def get_target_glass_ids(screening_row, history_df):
     # History 테이블에서 [LINE], [MACHINE_ID], [CODE], [TIMESTAMP] 조건 검색
     # 주의: MACHINE_ID가 Screening 결과에서 'LINE' 레벨로 나왔을 수도 있음 (L01 Logic)
     
-    mask = (history_df['TIMESTAMP'] >= start_date) & \
-           (history_df['CODE'] == target_code)
+    mask = (
+        (history_df['TIMESTAMP'] >= start_date) &
+        (history_df['CODE'] == target_code) &
+        (history_df['MODEL'] == target_model) &
+        (history_df['PROCESS'] == target_process)
+    )
     
     # Logic L01(Line Level)인 경우 Machine ID 필터링 제외 가능, 
     # 하지만 명확성을 위해 Screening 결과의 MACHINE_ID가 실제 설비면 필터링
