@@ -73,8 +73,8 @@ def apply_dual_grid(map_df):
     # [Micro Grid]
     # 좌표 중심을 기준으로 Grid화 (좌표 + Offset) / Size
     # 가정: 좌표계 중심이 (0,0)
-    map_df['Grid_X'] = np.floor((map_df['DEF_PNT_X'] + (GLASS_WIDTH/2)) / MICRO_GRID_W).astype(int)
-    map_df['Grid_Y'] = np.floor((map_df['DEF_PNT_Y'] + (GLASS_HEIGHT/2)) / MICRO_GRID_H).astype(int)
+    map_df['MICRO_GRID_X'] = np.floor((map_df['DEF_PNT_X'] + (GLASS_WIDTH/2)) / MICRO_GRID_W).astype(int)
+    map_df['MICRO_GRID_Y'] = np.floor((map_df['DEF_PNT_Y'] + (GLASS_HEIGHT/2)) / MICRO_GRID_H).astype(int)
     
     # [Macro Grid] 3x3
     # X구간: 0(Left), 1(Center), 2(Right)
@@ -85,14 +85,14 @@ def apply_dual_grid(map_df):
         elif norm < (total_len * 2) / 3: return 1
         else: return 2
 
-    map_df['Macro_X'] = map_df['DEF_PNT_X'].apply(lambda x: get_macro_idx(x, GLASS_WIDTH))
-    map_df['Macro_Y'] = map_df['DEF_PNT_Y'].apply(lambda y: get_macro_idx(y, GLASS_HEIGHT))
+    map_df['MACRO_GRID_X'] = map_df['DEF_PNT_X'].apply(lambda x: get_macro_idx(x, GLASS_WIDTH))
+    map_df['MACRO_GRID_Y'] = map_df['DEF_PNT_Y'].apply(lambda y: get_macro_idx(y, GLASS_HEIGHT))
     
     # Macro Zone ID (1~9)
     # 7 8 9
     # 4 5 6
     # 1 2 3
-    map_df['Macro_ID'] = (map_df['Macro_Y'] * 3) + map_df['Macro_X'] + 1
+    map_df['MACRO_ID'] = (map_df['MACRO_GRID_Y'] * 3) + map_df['MACRO_GRID_X'] + 1
     
     return map_df
 
@@ -107,7 +107,7 @@ def detect_pattern_features(glass_map_df, total_glass_count):
 
     # 1. Repeater Check (Micro Grid 기준)
     # 여러 장의 Glass를 겹쳤을 때 동일 Grid에 반복 발생하는가?
-    grid_counts = glass_map_df.groupby(['Grid_X', 'Grid_Y']).size()
+    grid_counts = glass_map_df.groupby(['MICRO_GRID_X', 'MICRO_GRID_Y']).size()
     max_repeat = grid_counts.max()
     
     if total_glass_count > 5 and (max_repeat / total_glass_count) >= TH_REPEATER_RATIO:
@@ -136,7 +136,7 @@ def detect_pattern_features(glass_map_df, total_glass_count):
     total_defects = len(glass_map_df)
     if total_defects == 0: return "Normal"
 
-    macro_counts = glass_map_df['Macro_ID'].value_counts()
+    macro_counts = glass_map_df['MACRO_ID'].value_counts()
     
     # ---------------------------------------------------------
     # Zone Definition (Cartesian 좌표계 기준)
@@ -199,8 +199,8 @@ def detect_pattern_features(glass_map_df, total_glass_count):
         # 해당 Grid 주변부의 좌표 가져오기
         top_grid = grid_counts.idxmax() # (x, y)
         cluster_df = glass_map_df[
-            (glass_map_df['Grid_X'] == top_grid[0]) & 
-            (glass_map_df['Grid_Y'] == top_grid[1])
+            (glass_map_df['MICRO_GRID_X'] == top_grid[0]) & 
+            (glass_map_df['MICRO_GRID_Y'] == top_grid[1])
         ]
         if not cluster_df.empty:
             c_range_x = cluster_df['DEF_PNT_X'].max() - cluster_df['DEF_PNT_X'].min()
@@ -274,9 +274,9 @@ def run_map_analysis(input_screening, input_history, input_map):
         # [Step 6] 결과 생성
         # 원본 Map 데이터에 분석 결과를 붙여서 리턴할 수도 있고,
         # 요약된 통계만 리턴할 수도 있음. 여기서는 Map Row + Pattern Tag 리턴
-        current_map['Analyzed_Pattern'] = detected_pattern
-        current_map['Ref_Screening_Logic'] = row['LOGIC']
-        current_map['Ref_Machine'] = row['MACHINE_ID']
+        current_map['PATTERN'] = detected_pattern
+        current_map['REF_LOGIC'] = row['LOGIC']
+        current_map['REF_MACHINE'] = row['MACHINE_ID']
         
         results.append(current_map)
 
@@ -285,10 +285,20 @@ def run_map_analysis(input_screening, input_history, input_map):
         final_df = pd.concat(results, ignore_index=True)
         # 필요한 컬럼만 정리
         out_cols = [
-            'Glass_ID', 'Panel_ID', 'TIMESTAMP', 
-            'DEF_PNT_X', 'DEF_PNT_Y', 'CODE', 
-            'Grid_X', 'Grid_Y', 'Macro_ID', 
-            'Analyzed_Pattern', 'Ref_Machine'
+            'Glass_ID',
+            'Panel_ID',
+            'TIMESTAMP', 
+            'DEF_PNT_X',
+            'DEF_PNT_Y',
+            'CODE', 
+            'MICRO_GRID_X',
+            'MICRO_GRID_Y',
+            'MACRO_GRID_X',
+            'MACRO_GRID_Y',
+            'MACRO_ID', 
+            'PATTERN',
+            'REF_LOGIC'
+            'REF_MACHINE'
         ]
         # 없는 컬럼 에러 방지
         actual_cols = [c for c in out_cols if c in final_df.columns]
