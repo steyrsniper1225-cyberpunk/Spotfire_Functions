@@ -297,7 +297,7 @@ def run_map_analysis(input_screening, input_history, input_map):
             'MACRO_GRID_Y',
             'MACRO_ID', 
             'PATTERN',
-            'REF_LOGIC'
+            'REF_LOGIC',
             'REF_MACHINE'
         ]
         # 없는 컬럼 에러 방지
