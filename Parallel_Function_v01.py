@@ -20,7 +20,7 @@ WINDOWS = {
     '04W': 28,
     '05W': 35,
 }
-MIN_SAMPLE_CNT = 30
+MIN_DATACOUNT_CNT = 30
 
 # ==========================================
 # 1. Logic Functions
@@ -57,7 +57,7 @@ def logic_01_global_line(df_slice, window_name):
     merged['Z_Score'] = (merged['Line_Mean'] - merged['Global_Mean']) / merged['Global_Std']
     
     for _, row in merged.iterrows():
-        if row['DATACOUNT'] < MIN_SAMPLE_CNT: continue
+        if row['DATACOUNT'] < MIN_DATACOUNT_CNT: continue
         if (row['Line_Mean'] - row['Global_Mean']) < 0.5: continue
         
         results.append({
@@ -105,7 +105,7 @@ def logic_02_local_unit(df_slice, window_name):
     merged['Z_Score'] = (merged['Unit_Mean'] - merged['Local_Mean']) / merged['Local_Std']
     
     for _, row in merged.iterrows():
-        if row['DATACOUNT'] < MIN_SAMPLE_CNT: continue
+        if row['DATACOUNT'] < MIN_DATACOUNT_CNT: continue
         if (row['Unit_Mean'] - row['Local_Mean']) < 1.0: continue
         
         results.append({
@@ -166,12 +166,13 @@ def logic_04_interaction_zscore(df_slice, window_name):
     """Logic 04: 교호작용 (VCD+SHP 조합) Z-Score 평가"""
     results = []
     # PHT 공정만 대상
-    target_df = df_slice[df_slice['MODEL', 'PROCESS'].astype(str).str.contains('PHT')].copy()
+    target_df = df_slice[df_slice['PROCESS'].astype(str).str.contains('PHT')].copy()
     if target_df.empty: return []
 
     # [Step 1] Line Level Basic Stats (Benchmark)
     # 라인 전체의 DPU 분포 계산 (중복 제거 후)
     clean_line_df = target_df.groupby(['MODEL', 'PROCESS', 'LINE', 'CODE', 'GLASS_ID'], observed=True)['DEFECT_QTY'].mean().reset_index()
+    
     line_stats = clean_line_df.groupby(['MODEL', 'PROCESS', 'LINE', 'CODE'], observed=True)['DEFECT_QTY'].agg(['mean', 'std']).reset_index()
     line_stats.rename(columns={'mean': 'Line_Mean', 'std': 'Line_Std'}, inplace=True)
 
@@ -179,20 +180,22 @@ def logic_04_interaction_zscore(df_slice, window_name):
     # VCD와 SHP 정보를 결합 (Glass ID 기준)
     mini_df = target_df[['Glass_ID', 'MODEL', 'PROCESS', 'LINE', 'CODE', 'MACHINE', 'MACHINE_NO', 'DEFECT_QTY']]
     
-    vcd_df = mini_df[mini_df['MACHINE'] == 'VCD'][['Glass_ID', 'MACHINE_NO']].rename(columns={'MACHINE_NO': 'VCD_NO'})
-    shp_df = mini_df[mini_df['MACHINE'] == 'SHP'][['Glass_ID', 'MACHINE_NO']].rename(columns={'MACHINE_NO': 'SHP_NO'})
+    group_cols = ['Glass_ID', 'MODEL', 'PROCESS', 'LINE', 'CODE']
+    
+    vcd_df = mini_df[mini_df['MACHINE'] == 'VCD'][[group_cols + 'MACHINE_NO']].rename(columns={'MACHINE_NO': 'VCD_NO'})
+    vcd_df = vcd_df.drop_duplicates(subset = group_cols, keep = 'first')
+    shp_df = mini_df[mini_df['MACHINE'] == 'SHP'][[group_cols + 'MACHINE_NO']].rename(columns={'MACHINE_NO': 'SHP_NO'})
+    shp_df = shp_df.drop_duplicates(subset = group_cols, keep = 'first')
     
     if vcd_df.empty or shp_df.empty: return []
 
     # Inner Join으로 VCD, SHP를 모두 거친 Glass만 추출
-    combo_df = pd.merge(vcd_df, shp_df, on='Glass_ID', how='inner')
-    
-    # 메타 정보 및 DEFECT_QTY 결합 (Glass 중복 제거된 메타 사용)
-    meta_df = clean_line_df[['Glass_ID', 'MODEL', 'PROCESS', 'LINE', 'CODE', 'DEFECT_QTY']]
-    final_df = pd.merge(combo_df, meta_df, on='Glass_ID', how='inner')
+    combo_df = pd.merge(vcd_df, shp_df, on=group_cols, how='inner')
+    meta_df = clean_line_df[group_cols + 'DEFECT_QTY']]
+    final_df = pd.merge(combo_df, meta_df, on=group_cols, how='inner')
 
     # 조합별 통계 산출
-    combo_stats = final_df.groupby(['MODEL', 'PROCESS', 'LINE', 'CODE', 'VCD_NO', 'SHP_NO'], observed=True)['DEFECT_QTY'].agg(['mean', 'count']).reset_index()
+    combo_stats = final_df.groupby(group_cols[1:] + ['VCD_NO', 'SHP_NO'], observed=True)['DEFECT_QTY'].agg(['mean', 'count']).reset_index()
 
     # [Step 3] Compare Combo vs Line (Z-Score)
     merged = pd.merge(combo_stats, line_stats, on=['MODEL', 'PROCESS', 'LINE', 'CODE'], how='left')
@@ -200,7 +203,7 @@ def logic_04_interaction_zscore(df_slice, window_name):
     merged['Z_Score'] = (merged['mean'] - merged['Line_Mean']) / merged['Line_Std']
 
     for _, row in merged.iterrows():
-        if row['count'] < MIN_SAMPLE_CNT: continue
+        if row['count'] < (MIN_DATACOUNT_CNT - 20): continue
         if (row['mean'] - row['Line_Mean']) < 0.5: continue
         
         if row['Z_Score'] > 0.1: 
@@ -239,7 +242,7 @@ def logic_05_slot_correlation(df_slice, window_name):
     grouped = df_unique.groupby(['MODEL', 'PROCESS', 'LINE', 'CODE'], observed=True)
 
     for name, group in grouped:
-        if len(group) < MIN_SAMPLE_CNT * 2: continue 
+        if len(group) < MIN_DATACOUNT_CNT * 2: continue 
         
         # 표준편차가 0이면 상관계수 계산 불가
         if group['DEFECT_QTY'].std() == 0 or group['Slot_Int'].std() == 0:
