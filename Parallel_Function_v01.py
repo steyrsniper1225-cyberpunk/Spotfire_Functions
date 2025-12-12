@@ -145,7 +145,7 @@ def logic_03_short_term_volatility(df_slice, window_name):
         if row['std'] < 3.0: continue
         else: cv = row['std'] / row['mean']
         
-        if cv > 4.0:
+        if cv > 3.0:
              results.append({
                 'TYPE': 'MACHINE',
                 'MODEL': row['MODEL'],
@@ -157,7 +157,7 @@ def logic_03_short_term_volatility(df_slice, window_name):
                 'WINDOW': window_name, 
                 'DATACOUNT': int(row['count']), # 여기서는 일수(Days)를 의미
                 'INDEX': round(cv, 2), 
-                'LEVEL': 'High' if cv > 5.0 else ('Med' if cv > 4.5 else 'Low'),
+                'LEVEL': 'High' if cv > 5.0 else ('Med' if cv > 4.0 else 'Low'),
                 'NOTE': f"Unstable (CV {cv:.2f}, Std {row['std']:.2f}, Avg {row['mean']:.2f})"
             })
     return results
