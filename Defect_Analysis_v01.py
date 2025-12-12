@@ -304,7 +304,7 @@ def run_map_analysis(input_screening, input_history, input_map):
         actual_cols = [c for c in out_cols if c in final_df.columns]
         return final_df[actual_cols]
     else:
-        return pd.DataFrame(columns=['Glass_ID', 'Analyzed_Pattern'])
+        return pd.DataFrame(columns=['Glass_ID', 'PATTERN'])
 
 # ==========================================
 # 3. Execution (For Local Test)
