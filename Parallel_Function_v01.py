@@ -142,7 +142,7 @@ def logic_03_short_term_volatility(df_slice, window_name):
     for _, row in volatility_stats.iterrows():
         if row['count'] < 3: continue  # 최소 3일치 데이터 필요
         if row['mean'] == 0: cv = 0
-        if row['std'] < 1.0: continue
+        if row['std'] < 3.0: continue
         else: cv = row['std'] / row['mean']
         
         if cv > 4.0:
