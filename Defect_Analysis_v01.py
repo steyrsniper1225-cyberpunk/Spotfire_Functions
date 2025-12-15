@@ -17,10 +17,15 @@ GLASS_HEIGHT = 1500
 # Pattern Detection Thresholds (튜닝 필요)
 TH_SPOT_DENSITY = 5       # Micro Grid 내 5개 이상이면 Spot 후보
 TH_REPEATER_RATIO = 0.3   # 전체 Glass의 30% 이상 동일 좌표 발생 시 Repeater
+TH_CONCENTRATION = 0.25
 
 # Window Mapping (Screening Master와 동일)
 WINDOWS = {
-    '01W': 7, '02W': 14, '03W': 21, '04W': 28, '05W': 35
+    '01W': 7,
+    '02W': 14,
+    '03W': 21,
+    '04W': 28,
+    '05W': 35
 }
 
 # ==========================================
@@ -165,13 +170,6 @@ def detect_pattern_features(glass_map_df, total_glass_count):
 
     macro_counts = glass_map_df['MACRO_ID'].value_counts()
     
-    # ---------------------------------------------------------
-    # Zone Definition (Cartesian 좌표계 기준)
-    # ---------------------------------------------------------
-    # 7 8 9 (Top)
-    # 4 5 6 (Mid)
-    # 1 2 3 (Btm)
-    
     zones = {
         'Corner': [1, 3, 7, 9],
         'Left':   [1, 4, 7],      # 사용자 입력(1,4,7)은 좌표계상 Left
@@ -186,12 +184,6 @@ def detect_pattern_features(glass_map_df, total_glass_count):
     for name, ids in zones.items():
         count = sum([macro_counts.get(z, 0) for z in ids])
         ratios[name] = count / total_defects
-
-    # ---------------------------------------------------------
-    # Decision Tree (우선순위 판정)
-    # ---------------------------------------------------------
-    # Threshold 설정 (예: 80% 이상 집중 시)
-    TH_CONCENTRATION = 0.8
 
     # 3-A. Corner Check (가장 우선)
     # Align 틀어짐, 모서리 파손 등 명확한 기구적 이슈
