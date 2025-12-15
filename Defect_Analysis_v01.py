@@ -76,24 +76,30 @@ def apply_dual_grid(map_df):
     map_df['MICRO_GRID_X'] = np.floor((map_df['DEF_PNT_X'] + (GLASS_WIDTH/2)) / MICRO_GRID_W).astype(int)
     map_df['MICRO_GRID_Y'] = np.floor((map_df['DEF_PNT_Y'] + (GLASS_HEIGHT/2)) / MICRO_GRID_H).astype(int)
     
-    # [Macro Grid] 3x3
-    # X구간: 0(Left), 1(Center), 2(Right)
-    # Y구간: 0(Bottom), 1(Middle), 2(Top)
+    # [Macro Grid] 6x6 (변경됨)
+    # X구간: 0 ~ 5
+    # Y구간: 0 ~ 5
     def get_macro_idx(val, total_len):
-        norm = val + (total_len/2) # 0 ~ Total 변환
-        if norm < total_len / 3: return 0
-        elif norm < (total_len * 2) / 3: return 1
-        else: return 2
-
+        norm = val + (total_len / 2) # 0 ~ Total 변환
+        
+        # 6등분: norm을 (전체길이/6)으로 나누어 인덱스(0~5) 산출
+        idx = int(norm / (total_len / 6))
+        
+        # 경계값 처리: 최대 인덱스는 5여야 함 (끝값 보정)
+        if idx >= 6: return 5
+        elif idx < 0: return 0
+        else: return idx
+    
     map_df['MACRO_GRID_X'] = map_df['DEF_PNT_X'].apply(lambda x: get_macro_idx(x, GLASS_WIDTH))
     map_df['MACRO_GRID_Y'] = map_df['DEF_PNT_Y'].apply(lambda y: get_macro_idx(y, GLASS_HEIGHT))
-    
-    # Macro Zone ID (1~9)
-    # 7 8 9
-    # 4 5 6
-    # 1 2 3
-    map_df['MACRO_ID'] = (map_df['MACRO_GRID_Y'] * 3) + map_df['MACRO_GRID_X'] + 1
-    
+
+    # Macro Zone ID (1~36)
+    # 기존 *3 에서 *6 으로 변경
+    # 31 32 ... 36
+    # ...
+    # 1  2  ... 6
+    map_df['MACRO_ID'] = (map_df['MACRO_GRID_Y'] * 6) + map_df['MACRO_GRID_X'] + 1
+
     return map_df
 
 def detect_pattern_features(glass_map_df, total_glass_count):
@@ -128,10 +134,31 @@ def detect_pattern_features(glass_map_df, total_glass_count):
         return "Line_Vertical"
     
     # Horizontal Line: Y편차 작음, X범위 큼
-    if std_y < MUCRO_GRID_H and range_x > (GLASS_WIDTH * 0.5):
+    if std_y < MICRO_GRID_H and range_x > (GLASS_WIDTH * 0.5):
         return "Line_Horizontal"
-
-    # 3. Macro Zone Logic: Corner & Directional Edge
+    
+    # 3. Cluster Analysis (Spot vs Scratch)
+    # Grid 밀집도가 높은지 확인
+    if max_repeat >= TH_SPOT_DENSITY:
+        # Aspect Ratio로 Spot/Scratch 구분
+        # 해당 Grid 주변부의 좌표 가져오기
+        top_grid = grid_counts.idxmax() # (x, y)
+        cluster_df = glass_map_df[
+            (glass_map_df['MICRO_GRID_X'] == top_grid[0]) & 
+            (glass_map_df['MICRO_GRID_Y'] == top_grid[1])
+        ]
+        if not cluster_df.empty:
+            c_range_x = cluster_df['DEF_PNT_X'].max() - cluster_df['DEF_PNT_X'].min()
+            c_range_y = cluster_df['DEF_PNT_Y'].max() - cluster_df['DEF_PNT_Y'].min()
+            
+            # 0으로 나누기 방지
+            ratio = (c_range_y / c_range_x) if c_range_x > 0 else 0
+            if ratio < 1: ratio = (c_range_x / c_range_y) if c_range_y > 0 else 0
+            
+            if ratio > 3.0: return "Scratch"
+            else: return "Spot"
+    
+    # 4. Macro Zone Logic: Corner & Directional Edge
     # 전체 Defect 개수
     total_defects = len(glass_map_df)
     if total_defects == 0: return "Normal"
@@ -191,28 +218,7 @@ def detect_pattern_features(glass_map_df, total_glass_count):
     edge_total_ratio = 1.0 - (macro_counts.get(5, 0) / total_defects)
     if edge_total_ratio > TH_CONCENTRATION:
         return "Edge_Frame" # 혹은 General "Edge"
-
-    # 4. Cluster Analysis (Spot vs Scratch)
-    # Grid 밀집도가 높은지 확인
-    if max_repeat >= TH_SPOT_DENSITY:
-        # Aspect Ratio로 Spot/Scratch 구분
-        # 해당 Grid 주변부의 좌표 가져오기
-        top_grid = grid_counts.idxmax() # (x, y)
-        cluster_df = glass_map_df[
-            (glass_map_df['MICRO_GRID_X'] == top_grid[0]) & 
-            (glass_map_df['MICRO_GRID_Y'] == top_grid[1])
-        ]
-        if not cluster_df.empty:
-            c_range_x = cluster_df['DEF_PNT_X'].max() - cluster_df['DEF_PNT_X'].min()
-            c_range_y = cluster_df['DEF_PNT_Y'].max() - cluster_df['DEF_PNT_Y'].min()
-            
-            # 0으로 나누기 방지
-            ratio = (c_range_y / c_range_x) if c_range_x > 0 else 0
-            if ratio < 1: ratio = (c_range_x / c_range_y) if c_range_y > 0 else 0
-            
-            if ratio > 3.0: return "Scratch"
-            else: return "Spot"
-
+    
     return "Random" # 특이 패턴 없음
 
 # ==========================================
