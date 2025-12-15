@@ -275,8 +275,8 @@ def run_map_analysis(input_screening, input_history, input_map):
         # 원본 Map 데이터에 분석 결과를 붙여서 리턴할 수도 있고,
         # 요약된 통계만 리턴할 수도 있음. 여기서는 Map Row + Pattern Tag 리턴
         current_map['PATTERN'] = detected_pattern
-        current_map['REF_LOGIC'] = row['LOGIC']
-        current_map['REF_MACHINE'] = row['MACHINE_ID']
+        current_map['LOGIC'] = row['LOGIC']
+        current_map['MACHINE_ID'] = row['MACHINE_ID']
         
         results.append(current_map)
 
@@ -297,8 +297,8 @@ def run_map_analysis(input_screening, input_history, input_map):
             'MACRO_GRID_Y',
             'MACRO_ID', 
             'PATTERN',
-            'REF_LOGIC',
-            'REF_MACHINE'
+            'LOGIC',
+            'MACHINE_ID'
         ]
         # 없는 컬럼 에러 방지
         actual_cols = [c for c in out_cols if c in final_df.columns]
