@@ -42,7 +42,7 @@ def get_target_glass_ids(screening_row, history_df):
     
     # 2. Date Filtering
     days = WINDOWS.get(target_window, 7)
-    max_date = history_df['TIMESTAMP'].max().floor('D')
+    max_date = history_df['TIMESTAMP'].max().replace(hour = 0, minute = 0, second = 0, microsecond = 0)
     start_date = max_date - timedelta(days=(days - 1))
     
     # 3. Apply Filters
