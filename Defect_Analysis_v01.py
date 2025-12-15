@@ -259,6 +259,7 @@ def run_map_analysis(input_screening, input_history, input_map):
         # [Step 3] Map Data Load (Filtering)
         # 해당 Glass ID를 가진 Map Data만 추출
         current_map = input_map[input_map['Glass_ID'].isin(target_glasses)].copy()
+        current_map = current_map[current_map['CODE'] == row['CODE']]
         
         if current_map.empty:
             continue
