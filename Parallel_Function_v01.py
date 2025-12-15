@@ -300,7 +300,7 @@ def run_screening(input_df=None):
     
     # [수정] CrossTable과 일치시키기 위해 시간(Time) 제거 후 날짜(Date)만 사용
     # 가장 최근 데이터의 날짜 00:00:00 기준
-    max_date = df['TIMESTAMP'].max().floor('D')
+    max_date = df['TIMESTAMP'].max().replace(hour = 0, minute = 0, second = 0, microsecond = 0)
     
     print(f"Data Loaded: {len(df)} rows. Max Date: {max_date}")
 
