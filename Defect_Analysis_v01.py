@@ -124,11 +124,11 @@ def detect_pattern_features(glass_map_df, total_glass_count):
     if pd.isna(std_x) or pd.isna(std_y): return "Spot"
 
     # Vertical Line: X편차 작음, Y범위 큼
-    if std_x > 600 and range_y > (GLASS_HEIGHT * 0.5):
+    if std_x < MICRO_GRID_W and range_y > (GLASS_HEIGHT * 0.5):
         return "Line_Vertical"
     
     # Horizontal Line: Y편차 작음, X범위 큼
-    if std_y > 600 and range_x > (GLASS_WIDTH * 0.5):
+    if std_y < MUCRO_GRID_H and range_x > (GLASS_WIDTH * 0.5):
         return "Line_Horizontal"
 
     # 3. Macro Zone Logic: Corner & Directional Edge
