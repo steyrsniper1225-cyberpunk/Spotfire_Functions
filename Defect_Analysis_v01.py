@@ -15,8 +15,8 @@ GLASS_WIDTH = 1800
 GLASS_HEIGHT = 1500
 
 # Pattern Detection Thresholds (튜닝 필요)
-TH_SPOT_DENSITY = 5       # Micro Grid 내 5개 이상이면 Spot 후보
-TH_REPEATER_RATIO = 0.3   # 전체 Glass의 30% 이상 동일 좌표 발생 시 Repeater
+TH_SPOT_DENSITY = 30       # Micro Grid 내 5개 이상이면 Spot 후보
+TH_REPEATER_RATIO = 0.3    # 전체 Glass의 30% 이상 동일 좌표 발생 시 Repeater
 TH_CONCENTRATION = 0.25
 
 # Window Mapping (Screening Master와 동일)
@@ -170,13 +170,20 @@ def detect_pattern_features(glass_map_df, total_glass_count):
 
     macro_counts = glass_map_df['MACRO_ID'].value_counts()
     
+    # MACRO_ID mapping
+    # [31, 32, 33, 34, 35, 36]
+    # [25, 26, 27, 28, 29, 30]
+    # [19, 20, 21, 22, 23, 24]
+    # [13, 14, 15, 16, 17, 18]
+    # [7,  8,  9,  10, 11, 12]
+    # [1,  2,  3,  4,  5,  6 ]
+    
     zones = {
-        'Corner': [1, 3, 7, 9],
-        'Left':   [1, 4, 7],      # 사용자 입력(1,4,7)은 좌표계상 Left
-        'Right':  [3, 6, 9],
-        'Top':    [7, 8, 9],
-        'Bottom': [1, 2, 3],
-        'Center': [5]             # 중앙 집중 (Spin Coating 등)
+        'LR_Side': [1, 7, 13, 19, 25, 31, 6, 12, 18, 24, 30, 36],
+        'Left':   [1, 7, 13, 19, 25, 31],
+        'Right':  [6, 12, 18, 24, 30, 36],
+        'Top':    [31, 32, 33, 34, 35, 36],
+        'Bottom': [1, 2, 3, 4, 5, 6],
     }
 
     # 각 Zone별 점유율(Ratio) 계산
@@ -185,32 +192,21 @@ def detect_pattern_features(glass_map_df, total_glass_count):
         count = sum([macro_counts.get(z, 0) for z in ids])
         ratios[name] = count / total_defects
 
-    # 3-A. Corner Check (가장 우선)
-    # Align 틀어짐, 모서리 파손 등 명확한 기구적 이슈
-    if ratios['Corner'] > TH_CONCENTRATION:
-        return "Corner"
-
-    # 3-B. Directional Edge Check (상/하/좌/우)
-    # 특정 방향의 Guide Rail, Robot Handover, 노즐 편차 등
-    directions = ['Left', 'Right', 'Top', 'Bottom']
-    # 점유율이 가장 높은 방향 찾기
-    best_dir = max(directions, key=lambda x: ratios[x])
+    if ratios['LR_Side'] > (TH_CONCENTRATION * 2):
+        return "LR_Side"
     
-    if ratios[best_dir] > TH_CONCENTRATION:
-        return f"Edge_{best_dir}"  # 예: "Edge_Left"
-
-    # 3-C. Center Check
-    # 중앙부 집중 (Spin Dry 얼룩, 중앙 처짐 등)
-    if ratios['Center'] > 0.5: # 중앙은 면적이 좁으므로 Threshold 완화 가능
-        return "Center"
-
-    # 3-D. General Edge Check
-    # 특정 한 방향은 아니지만, 테두리 전반에 퍼진 경우 (예: 액자형 얼룩)
-    # Edge Zone = 전체 - Center(5번)
-    edge_total_ratio = 1.0 - (macro_counts.get(5, 0) / total_defects)
-    if edge_total_ratio > TH_CONCENTRATION:
-        return "Edge_Frame" # 혹은 General "Edge"
+    if ratios['Left'] > TH_CONCENTRATION:
+        return "Left"
     
+    if ratios['Right'] > TH_CONCENTRATION:
+        return "Right"
+    
+    if ratios['Top'] > TH_CONCENTRATION:
+        return "Top"
+    
+    if ratios['Bottom'] > TH_CONCENTRATION:
+        return "Bottom"
+        
     return "Random" # 특이 패턴 없음
 
 # ==========================================
