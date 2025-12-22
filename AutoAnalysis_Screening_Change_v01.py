@@ -69,40 +69,48 @@ def run_dpu_variation_analysis(df_history):
     table2_rows = []
     
     # Model/Code 별로 루프를 돌며 전주 대비 변동 확인
-    for (model, code), group in t1_agg.groupby(['MODEL', 'CODE']):
-        group = group.sort_values('WINDOW') # 날짜순 정렬 보장
+    for (model, code) in t1_agg.groupby(['MODEL', 'CODE']).groups.keys():
+    group = t1_agg[(t1_agg['MODEL'] == model) & (t1_agg['CODE'] == code)].sort_values('WINDOW')
+    
+    # 1. CODE 종류에 따른 임계값(Threshold) 설정
+    if "PK" in str(code):
+        threshold = 0.05
+    elif "PLN" in str(code):
+        threshold = 0.10
+    else:
+        threshold = 0.10  # 기본값
         
-        # Shift를 이용해 이전 주차 데이터 가져오기
-        group['PREV_DPU'] = group['DPU'].shift(1)
-        group['PREV_WINDOW'] = group['WINDOW'].shift(1)
+    # Shift를 이용해 이전 주차 데이터 가져오기
+    group['PREV_DPU'] = group['DPU'].shift(1)
+    group['PREV_WINDOW'] = group['WINDOW'].shift(1)
+    
+    # 첫 주는 비교 대상 없으므로 제외
+    valid_rows = group.dropna(subset=['PREV_DPU'])
+    
+    for idx, row in valid_rows.iterrows():
+        diff = row['DPU'] - row['PREV_DPU']
+        abs_diff = abs(diff)
         
-        # 첫 주는 비교 대상 없으므로 제외
-        valid_rows = group.dropna(subset=['PREV_DPU'])
-        
-        for idx, row in valid_rows.iterrows():
-            diff = row['DPU'] - row['PREV_DPU']
+        # 2. 동적 임계값 적용
+        if abs_diff >= threshold:
+            analysis_id = f"{model}_{code}_{row['WINDOW']}_VS_{row['PREV_WINDOW']}"
             
-            # 조건: 절대값 0.1 이상 변동
-            if abs(diff) >= 0.1:
-                analysis_id = f"{model}_{code}_{row['WINDOW']}_VS_{row['PREV_WINDOW']}"
-                
-                table2_rows.append({
-                    'ANALYSIS_NO': analysis_id,
-                    'MODEL': model,
-                    'CODE': code,
-                    'CURR_WINDOW': row['WINDOW'],
-                    'PREV_WINDOW': row['PREV_WINDOW'],
-                    'CURR_DPU': row['DPU'],
-                    'PREV_DPU': row['PREV_DPU'],
-                    'DELTA_DPU': diff,
-                    'ABS_DELTA': abs(diff)
-                })
-    
-    df_table_02 = pd.DataFrame(table2_rows)
-    
-    
-    if df_table_02.empty:
-        return pd.DataFrame(columns=['ANALYSIS_NO', 'EXPLAIN_LINE', 'LINE_CONTRIBUTION']), t1_agg, df_table_02
+            table2_rows.append({
+                'ANALYSIS_NO': analysis_id,
+                'MODEL': model,
+                'CODE': code,
+                'CURR_WINDOW': row['WINDOW'],
+                'PREV_WINDOW': row['PREV_WINDOW'],
+                'CURR_DPU': row['DPU'],
+                'PREV_DPU': row['PREV_DPU'],
+                'DELTA_DPU': diff,
+                'ABS_DELTA': abs_diff
+            })
+
+df_table_02 = pd.DataFrame(table2_rows)
+
+if df_table_02.empty:
+    return pd.DataFrame(columns=['ANALYSIS_NO', 'EXPLAIN_LINE', 'LINE_CONTRIBUTION']), t1_agg, df_table_02
 
     # -------------------------------------------------------
     # [Table 3 & 4] Root Cause Finding (Line Level)
