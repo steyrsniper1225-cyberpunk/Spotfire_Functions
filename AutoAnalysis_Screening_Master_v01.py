@@ -124,29 +124,51 @@ def logic_02_local_unit(df_slice, window_name):
         })
     return results
 
+import pandas as pd
+import numpy as np
+
 def logic_03_short_term_volatility(df_slice, window_name):
-    """Logic 03: 변동성 (Stability Check)"""
+    """Logic 03: 변동성 (Max Z-Score per Group)"""
     results = []
     
+    key_cols = ['MODEL', 'PROCESS', 'LINE', 'MACHINE_ID', 'CODE']
+    
     # [Step 0] 날짜 기준 Pre-aggregation
-    # 일별 통계를 낼 때도 Glass 중복 제거 필요
-    df_unique = df_slice.groupby(['MODEL', 'PROCESS', 'LINE', 'MACHINE_ID', 'CODE', 'GLASS_ID', 'TIMESTAMP'], observed=True)['DEFECT_QTY'].mean().reset_index()
+    df_unique = df_slice.groupby(key_cols + ['GLASS_ID', 'TIMESTAMP'], observed=True)['DEFECT_QTY'].mean().reset_index()
     df_unique['Date'] = df_unique['TIMESTAMP'].dt.date
     
-    # 일별 평균 DPU 산출
-    daily_stats = df_unique.groupby(['MODEL', 'PROCESS', 'LINE', 'MACHINE_ID', 'CODE', 'Date'], observed=True)['DEFECT_QTY'].mean().reset_index()
+    # [Step 1] 일별 평균 DPU (Daily Stats)
+    daily_stats = df_unique.groupby(key_cols + ['Date'], observed=True)['DEFECT_QTY'].mean().reset_index()
     
-    # 변동성(CV) 산출
-    volatility_stats = daily_stats.groupby(['MODEL', 'PROCESS', 'LINE', 'MACHINE_ID', 'CODE'], observed=True)['DEFECT_QTY'].agg(['std', 'mean', 'count']).reset_index()
+    # [Step 2] Window 기간 전체 통계 (Window Stats)
+    volatility_stats = daily_stats.groupby(key_cols, observed=True)['DEFECT_QTY'].agg(['std', 'mean', 'count']).reset_index()
     
-    for _, row in volatility_stats.iterrows():
-        if row['count'] < 3: continue  # 최소 3일치 데이터 필요
-        if row['mean'] == 0: cv = 0
-        if row['std'] < 3.0: continue
-        else: cv = row['std'] / row['mean']
+    # [Step 3] 병합 및 최소 데이터 수 필터링
+    merged_df = pd.merge(daily_stats, volatility_stats, on=key_cols, how='inner')
+    merged_df = merged_df[merged_df['count'] >= 3].copy()
+    
+    # [Step 4] Z-Score 계산 (std > 0 인 경우만)
+    merged_df = merged_df[merged_df['std'] > 0].copy()
+    merged_df['z_score'] = (merged_df['DEFECT_QTY'] - merged_df['mean']) / merged_df['std']
+    
+    # [Step 5] Z-Score > 1.0 필터링 후, 그룹별 최대값 1개만 선정
+    outliers = merged_df[merged_df['z_score'] > 1.0].copy()
+    
+    if not outliers.empty:
+        # Z-score 내림차순 정렬 -> 그룹별 중복 제거(첫번째=최대값 유지)
+        max_outliers = outliers.sort_values(by='z_score', ascending=False).drop_duplicates(
+            subset=key_cols, 
+            keep='first'
+        )
         
-        if cv > 3.0:
-             results.append({
+        for _, row in max_outliers.iterrows():
+            z_score = row['z_score']
+            
+            if z_score > 3.0: level = 'High'
+            elif z_score > 2.0: level = 'Med'
+            else: level = 'Low'
+
+            results.append({
                 'TYPE': 'MACHINE',
                 'MODEL': row['MODEL'],
                 'PROCESS': row['PROCESS'],
@@ -154,12 +176,13 @@ def logic_03_short_term_volatility(df_slice, window_name):
                 'MACHINE_ID': row['MACHINE_ID'],
                 'CODE': row['CODE'],
                 'LOGIC': 'L03',
-                'WINDOW': window_name, 
-                'DATACOUNT': int(row['count']), # 여기서는 일수(Days)를 의미
-                'INDEX': round(cv, 2), 
-                'LEVEL': 'High' if cv > 5.0 else ('Med' if cv > 4.0 else 'Low'),
-                'NOTE': f"Unstable (CV {cv:.2f}, Std {row['std']:.2f}, Avg {row['mean']:.2f})"
+                'WINDOW': window_name,
+                'DATACOUNT': int(row['count']),
+                'INDEX': round(z_score, 2),
+                'LEVEL': level,
+                'NOTE': f"Max Outlier: {row['Date']} (Z {z_score:.2f}, Daily {row['DEFECT_QTY']:.2f})"
             })
+            
     return results
 
 def logic_04_interaction_zscore(df_slice, window_name):
