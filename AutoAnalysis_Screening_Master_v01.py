@@ -311,14 +311,16 @@ def run_screening(input_df=None):
         # 해당 날짜 00:00:00 포함 이후 모든 데이터
         df_slice = df[df['TIMESTAMP'] >= start_date].copy()
         
-        if df_slice.empty: continue
+        df_slice_general = df_slice[df_slice["MACHINE"] != "CST_SLOT"]
+        if not df_slice_general.empty:
+            all_results.extend(logic_01_global_line(df_slice_general, window_name))
+            all_results.extend(logic_02_local_unit(df_slice_general, window_name))
+            all_results.extend(logic_03_short_term_volatility(df_slice_general, window_name))
+            all_results.extend(logic_04_interaction_zscore(df_slice_general, window_name))
         
-        # 각 로직 실행
-        all_results.extend(logic_01_global_line(df_slice, window_name))
-        all_results.extend(logic_02_local_unit(df_slice, window_name))
-        all_results.extend(logic_03_short_term_volatility(df_slice, window_name))
-        all_results.extend(logic_04_interaction_zscore(df_slice, window_name)) 
-        all_results.extend(logic_05_slot_correlation(df_slice, window_name)) 
+        df_slice_cst_slot = df_slice[df_slice["MACHINE"] == "CST_SLOT"]
+        if not df_slice_cst_slot.empty:
+            all_results.extend(logic_05_slot_correlation(df_slice_cst_slot, window_name)) 
 
     # [결과 반환]
     if all_results:
