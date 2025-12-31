@@ -107,6 +107,7 @@ def logic_02_local_unit(df_slice, window_name):
     for _, row in merged.iterrows():
         if row['DATACOUNT'] < MIN_DATACOUNT_CNT: continue
         if (row['Unit_Mean'] - row['Local_Mean']) < 1.0: continue
+            # RPR은 차이 값, I-PTN은 Z_Score로 필터링
         
         results.append({
             'TYPE': 'MACHINE',
