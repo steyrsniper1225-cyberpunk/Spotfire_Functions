@@ -135,7 +135,10 @@ def logic_03_short_term_volatility(df_slice, window_name):
     df_unique['Date'] = df_unique['TIMESTAMP'].dt.date
     
     # [Step 1] 일별 평균 DPU (Daily Stats)
-    daily_stats = df_unique.groupby(key_cols + ['Date'], observed=True)['DEFECT_QTY'].mean().reset_index()
+    daily_stats = df_unique.groupby(key_cols + ['Date'], observed=True)['DEFECT_QTY'].agg(["mean", "count"]).reset_index()
+    daily_stats = daily_stats[daily_stats["count"] >= 30].copy()
+    daily_stats.rename(columns = {"mean": "DEFECT_QTY"}, inplace = True)
+    daily_stats.drop(columns = ["count"], inplace = True)
     
     # [Step 2] Window 기간 전체 통계 (Window Stats)
     volatility_stats = daily_stats.groupby(key_cols, observed=True)['DEFECT_QTY'].agg(['std', 'mean', 'count']).reset_index()
