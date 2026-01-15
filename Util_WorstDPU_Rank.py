@@ -77,7 +77,7 @@ def calculate_dpu_rank(input_df, time_frame, time_range):
     # [Main Execution] GroupBy Apply
     # -------------------------------------------------------------------------
     # [Step 03] Grouping keys
-    group_keys = ['FACTORY', 'PRODUCT', 'PROCESS']
+    group_keys = ['FACTORY', 'PRODUCT', 'PROCESS_CODE']
     
     # 그룹별 연산 수행 -> 결과는 [FACTORY, PRODUCT, PROCESS, CODE]를 인덱스로 갖는 Series
     # reset_index를 통해 DataFrame 형태로 변환: columns = [FACTORY, PRODUCT, PROCESS, CODE, Rank_Label]
@@ -105,7 +105,7 @@ def calculate_dpu_rank(input_df, time_frame, time_range):
     merged_df = pd.merge(
         df, 
         rank_mapping, 
-        on=['FACTORY', 'PRODUCT', 'PROCESS', 'CODE'], 
+        on=['FACTORY', 'PRODUCT', 'PROCESS_CODE', 'CODE'], 
         how='left'
     )
     
@@ -149,4 +149,4 @@ if __name__ == "__main__":
 else:
     # Spotfire DataFunction 실행 영역
     # input_df, time_frame, time_range는 Spotfire에서 전달됨
-    input_df = calculate_dpu_rank(input_df, time_frame, time_range)
+    output_df = calculate_dpu_rank(input_df, 'DATE', 2)
