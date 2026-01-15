@@ -101,7 +101,7 @@ def calculate_dpu_rank(input_df, time_frame, time_range):
     merged_df['DPU_RANK'] = np.where(condition, merged_df['Rank_Label'], 'ignore')
     
     # 3. 불필요 컬럼 제거 (WIN_RANK, Rank_Label)
-    cols_to_drop = ['Rank_Label', 'WIN_RANK']
+    cols_to_drop = ['WINDOW', 'PROCESS_CODE', 'CODE', 'DEFECT_QTY', 'GLS_COUNT', 'DPU', 'WINDOWFRAME', 'FACTORY', 'PRODUCT', 'PROCESS_DESC''Rank_Label', 'WIN_RANK']
     # WIN_RANK는 위에서 생성했으므로 존재하지만 안전하게 확인
     actual_drop = [c for c in cols_to_drop if c in merged_df.columns]
     final_df = merged_df.drop(columns=actual_drop)
