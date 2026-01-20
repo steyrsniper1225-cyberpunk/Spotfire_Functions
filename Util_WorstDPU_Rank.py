@@ -31,12 +31,12 @@ def calculate_dpu_rank(input_df, time_frame, time_range):
     # 동일 Group(Factory/Product/Process) 내에서 Window가 최신일수록 1에 가까운 값을 가짐
     # method='dense' : 1등, 2등, 3등... 식으로 순차적 정수 부여
     
-    group_keys = ['FACTORY', 'PRODUCT', 'PROCESS_DESC']
+    group_keys_ranking = ['FACTORY', 'PRODUCT']
     
     # 1. 대상 데이터에 대해 Window Rank 계산 (원본 인덱스 유지)
     # ascending=False : 문자열 기준 내림차순 (예: "26-05W" > "26-04W") -> 최신이 1순위
     # 주의: WINDOW 값이 문자열이므로 포맷이 일정하다는 전제하에 정렬됨
-    df.loc[mask_frame, 'WIN_RANK'] = df[mask_frame].groupby(group_keys)['WINDOW'] \
+    df.loc[mask_frame, 'WIN_RANK'] = df[mask_frame].groupby(group_keys_ranking)['WINDOW'] \
                                                    .rank(method='dense', ascending=False)
     
     # 2. 분석 대상 데이터 추출 (최근 N개 Window 이내인 데이터만)
@@ -74,17 +74,18 @@ def calculate_dpu_rank(input_df, time_frame, time_range):
 
     # Group별 Top 5 선정
     # 결과: Index=[FACTORY, PRODUCT, PROCESS, CODE], Value=Rank_Label
-    rank_mapping = target_df.groupby(group_keys).apply(get_worst_codes).reset_index()
+    group_keys_dpu = ['FACTORY', 'PRODUCT', 'PROCESS_DESC']
+    rank_mapping = target_df.groupby(group_keys_dpu).apply(get_worst_codes).reset_index()
     
     # 컬럼명 정리 (마지막 컬럼이 Rank 값)
-    rank_mapping.columns = group_keys + ['CODE', 'Rank_Label']
+    rank_mapping.columns = group_keys_dpu + ['CODE', 'Rank_Label']
 
     # -------------------------------------------------------------------------
     # [Merge & Update] 조건을 만족하는 행만 업데이트
     # -------------------------------------------------------------------------
     # 1. 원본 데이터에 Rank 정보 매핑 (Left Join)
     # 이 시점에서는 범위 밖(과거) 데이터에도 Code가 같으면 Rank가 붙음
-    merged_df = pd.merge(df, rank_mapping, on=group_keys + ['CODE'], how='left')
+    merged_df = pd.merge(df, rank_mapping, on=group_keys_dpu + ['CODE'], how='left')
     
     # 2. [수정 요청 사항 반영] 조건부 업데이트
     # 조건 1: 사용자가 선택한 Time Frame 일 것
