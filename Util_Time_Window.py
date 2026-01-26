@@ -11,7 +11,7 @@ WINDOWS_CONFIG = {
 }
 
 def get_window_start(max_dt: pd.DataFrame, days: int):
-    return (max_dt - pd.Timedelta(days = days - 1)).normalize()
+    return (max_dt - pd.Timedelta(days = days - 0)).normalize()
 
 def assign_window(ts: pd.Timestamp):
     for win in ["01W", "02W", "03W", "04W", "05W"]:
