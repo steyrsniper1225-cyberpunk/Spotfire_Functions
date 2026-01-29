@@ -364,7 +364,24 @@ def run_screening(input_df=None):
             return result_df
     else:
         # 결과 없을 시 빈 테이블 리턴 (에러 방지)
-        return pd.DataFrame(columns=['TYPE', 'LEVEL', 'NOTE'])
+        none_cols = ['TYPE', 'MODEL', 'PROCESS', 'LINE', 'MACHINE_ID', 'CODE', 'LOGIC', 'WINDOW', 'DATACOUNT', 'INDEX', 'LEVEL', 'NOTE']
+        none_data = [['none', 'none', 'none', 'none', 'none', 'none', 'none', 'none', 0, 0.0, 'none', 'none']]
+        none_df = pd.DataFrame(none_data, columns = none_cols)
+        none_df = none_df.astype({
+        'TYPE': 'str',
+        'MODEL': 'str',
+        'PROCESS': 'str',
+        'LINE': 'str',
+        'MACHINE_ID': 'str',
+        'CODE': 'str',
+        'LOGIC': 'str',
+        'WINDOW': 'str',
+        'DATACOUNT': 'int',
+        'INDEX': 'float',
+        'LEVEL': 'str',
+        'NOTE': 'str'
+        })
+        return none_df
 
 # ==========================================
 # 3. Entry Point (Spotfire Wrapper)
