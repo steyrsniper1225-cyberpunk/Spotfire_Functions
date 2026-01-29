@@ -195,23 +195,24 @@ def run_dpu_variation_analysis(df_history):
         
         if is_increase:
             # 가장 크게 증가시킨 라인 Top 1
-            culprit = line_pivot.sort_values('DELTA_CONTRI', ascending=False).iloc[0]
+            culprit = line_pivot.sort_values('DELTA_CONTRI', ascending=False).head(5)
         else:
             # 가장 크게 감소시킨 라인 Top 1
-            culprit = line_pivot.sort_values('DELTA_CONTRI', ascending=True).iloc[0]
+            culprit = line_pivot.sort_values('DELTA_CONTRI', ascending=True).head(5)
             
         # 6. 결과 수집 (Table 4)
-        table4_results.append({
-            'ANALYSIS_NO': case['ANALYSIS_NO'],
-            'MODEL': case['MODEL'],
-            'CODE': case['CODE'],
-            'WINDOW_CHANGE': f"{case['PREV_WINDOW']} -> {case['CURR_WINDOW']}",
-            'TOTAL_DELTA_DPU': round(case['DELTA_DPU'], 3),
-            'EXPLAIN_PROCESS': culprit['PROCESS'],
-            'EXPLAIN_LINE': culprit['LINE'],
-            'LINE_DELTA_CONTRI': round(culprit['DELTA_CONTRI'], 3),
-            'NOTE': f"Line DPU: {culprit['DPU_PREV']:.2f} -> {culprit['DPU_CURR']:.2f}"
-        })
+        for rank, (_, culprit_now) in enumerate(culprit.iterrows(), start = 1):
+            table4_results.append({
+                'ANALYSIS_NO': case['ANALYSIS_NO'],
+                'MODEL': case['MODEL'],
+                'CODE': case['CODE'],
+                'WINDOW_CHANGE': f"{case['PREV_WINDOW']} -> {case['CURR_WINDOW']}",
+                'TOTAL_DELTA_DPU': round(case['DELTA_DPU'], 3),
+                'EXPLAIN_PROCESS': culprit_now['PROCESS'],
+                'EXPLAIN_LINE': culprit_now['LINE'],
+                'LINE_DELTA_CONTRI': round(culprit['DELTA_CONTRI'], 3),
+                'NOTE': f"Line DPU: {culprit_now['DPU_PREV']:.2f} -> {culprit_now['DPU_CURR']:.2f}"
+            })
 
     return pd.DataFrame(table4_results), t1_agg, df_table_02
 
