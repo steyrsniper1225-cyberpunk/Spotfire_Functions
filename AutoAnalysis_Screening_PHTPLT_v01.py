@@ -22,10 +22,6 @@ def analyze_photo_unit_anomalies(df):
     records = []
     df_pht = df.copy()
     
-    # 1. 컬럼명 표준화 (Change_v01 형식 호환)
-    col_map = {'GLASS_ID': 'Glass_ID', 'REAL_DEFECT_QTY': 'DEFECT_QTY'}
-    df_pht.rename(columns={k: v for k, v in col_map.items() if k in df_pht.columns}, inplace=True)
-    
     # 2. Window(주차) 컬럼 셋업
     if 'WINDOW(SPOTFIRE)' in df_pht.columns:
         df_pht['WEEK'] = df_pht['WINDOW(SPOTFIRE)']
