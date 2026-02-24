@@ -110,7 +110,18 @@ def run_dpu_variation_analysis(df_history):
     df_table_02 = pd.DataFrame(table2_rows)
     
     if df_table_02.empty:
-        return pd.DataFrame(columns=['ANALYSIS_NO', 'EXPLAIN_LINE', 'LINE_CONTRIBUTION']), t1_agg, df_table_02
+        empty_res = pd.DataFrame([{
+            'ANALYSIS_NO': 'NO_VARIATION_DETECTED',
+            'MODEL': '-',
+            'CODE': '-',
+            'CURR_WINDOW': '-',
+            'PREV_WINDOW': '-',
+            'CURR_DPU': row['DPU'],
+            'PREV_DPU': row['PREV_DPU'],
+            'DELTA_DPU': diff,
+            'ABS_DELTA': abs_diff
+        }])
+        return empty_res, t1_agg, df_table_02
 
     # -------------------------------------------------------
     # [Table 3 & 4] Root Cause Finding (Line Level)
