@@ -4,7 +4,9 @@
         "WINDOWFRAME" : ["MONTH", "-", "WEEK", "_", "DATE"],
         "WINDOW" : {
             "MONTH" : "YY-MM" & "M",
+            "-" : "-",
             "WEEK" : "YY-WW" & "W",
+            "_" : "-",
             "DATE" : "YY-MM/DD"
         },
         "LINE" : [
@@ -14,6 +16,13 @@
             ],
         "GLASS" : int,
         "CODE" : ["PLN1-FM", "PLN1-SM", "PLN2-FM", "PLN2-SM"],
-        "DPU" : float
+        "DPU" : float,
+        "RANGE" : {
+            "WINDOWFRAME_is_-" : 0,
+            "WINDOWFRAME_is__" : 0,
+            "WINDOWFRAME_is_MONTH" : DenseRank("WINDOW", 'desc'),
+            "WINDOWFRAME_is_WEEK" : DenseRank("WINDOW", 'desc'),
+            "WINDOWFRAME_is_DATE" : DenseRank("WINDOW", 'desc')
+        }
     }
 }
