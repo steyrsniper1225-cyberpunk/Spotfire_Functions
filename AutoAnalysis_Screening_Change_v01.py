@@ -221,11 +221,28 @@ def run_dpu_variation_analysis(df_history):
                 'TOTAL_DELTA_DPU': round(case['DELTA_DPU'], 3),
                 'EXPLAIN_PROCESS': culprit_now['PROCESS'],
                 'EXPLAIN_LINE': culprit_now['LINE'],
-                'LINE_DELTA_CONTRI': round(culprit['DELTA_CONTRI'], 3),
+                'LINE_DELTA_CONTRI': round(culprit_now['DELTA_CONTRI'], 3),
                 'NOTE': f"Line DPU: {culprit_now['DPU_PREV']:.2f} -> {culprit_now['DPU_CURR']:.2f}"
             })
+    
+    df_table_04 = pd.DataFrame(table4_results)
+    
+    # Table 4에 누적된 결과가 없는 경우 (Table 2가 비어있었거나 조건 불충족 등)
+    if df_table_04.empty:
+        # 정상 산출 시와 동일한 컬럼으로 Dummy Row 생성
+        df_table_04 = pd.DataFrame([{
+            'ANALYSIS_NO': 'NO_VARIATION_DETECTED',
+            'MODEL': '-',
+            'CODE': '-',
+            'WINDOW_CHANGE': '-',
+            'TOTAL_DELTA_DPU': 0.0,
+            'EXPLAIN_PROCESS': '-',
+            'EXPLAIN_LINE': '-',
+            'LINE_DELTA_CONTRI': 0.0,
+            'NOTE': 'NO_VARIATION_DETECTED'
+        }])
 
-    return pd.DataFrame(table4_results), t1_agg, df_table_02
+    return df_table_04, t1_agg, df_table_02
 
 if __name__ == "__main__":
     input_file = 'dummy_screening_master_v2.xlsx'
