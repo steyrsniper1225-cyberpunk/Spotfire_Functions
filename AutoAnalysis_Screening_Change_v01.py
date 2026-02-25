@@ -121,7 +121,7 @@ def run_dpu_variation_analysis(df_history):
             'DELTA_DPU': diff,
             'ABS_DELTA': abs_diff
         }])
-        return empty_res, t1_agg, df_table_02
+        return t1_agg, df_table_02, empty_res
 
     # -------------------------------------------------------
     # [Table 3 & 4] Root Cause Finding (Line Level)
