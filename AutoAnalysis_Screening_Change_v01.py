@@ -242,7 +242,7 @@ def run_dpu_variation_analysis(df_history):
             'NOTE': 'NO_VARIATION_DETECTED'
         }])
 
-    return df_table_04, t1_agg, df_table_02
+    return t1_agg, df_table_02, df_table_04
 
 if __name__ == "__main__":
     input_file = 'dummy_screening_master_v2.xlsx'
