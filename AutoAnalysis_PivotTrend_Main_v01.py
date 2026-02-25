@@ -39,11 +39,12 @@ def get_dummy_each_code_trend():
 # Analysis Functions
 # --------------------------------------------------------------------------------
 
-def total_trend(df_input=None):
+def total_trend(df_input):
     """
     Analyzes the trend of Total DPU over the latest 6 days.
     Logic: Z-Score calculation and Linear Regression Slope.
     """
+    '''
     # 1. Input Handling (Spotfire context vs Local)
     if df_input is None:
         try:
@@ -54,7 +55,7 @@ def total_trend(df_input=None):
                 df_input = pd.read_excel('Util_Generator_PivotTrend_Result.xlsx')
         except Exception:
             return get_dummy_total_trend()
-
+    '''
     # 2. Filter: Latest 6 Days for TOTAL Line
     df = df_input[(df_input['WINDOWFRAME'] == 'DATE') & (df_input['LINE'] == 'TOTAL')].copy()
     if df.empty:
@@ -112,10 +113,11 @@ def total_trend(df_input=None):
     
     return result
 
-def each_code_trend(df_input=None):
+def each_code_trend(df_input):
     """
     Analyzes correlation between each Code and the Total Trend.
     """
+    '''
     # 1. Input Handling
     if df_input is None:
         try:
@@ -125,7 +127,7 @@ def each_code_trend(df_input=None):
                 df_input = pd.read_excel('Util_Generator_PivotTrend_Result.xlsx')
         except Exception:
             return get_dummy_each_code_trend()
-
+    '''
     # 2. Preparation
     df = df_input[(df_input['WINDOWFRAME'] == 'DATE') & (df_input['LINE'] == 'TOTAL')].copy()
     if df.empty:
@@ -173,16 +175,6 @@ def each_code_trend(df_input=None):
 # --------------------------------------------------------------------------------
 # Main Execution (for Local Testing)
 # --------------------------------------------------------------------------------
-
-if __name__ == "__main__":
-    print("-" * 50)
-    print("TOTAL TREND ANALYSIS RESULT:")
-    print("-" * 50)
-    res_total = total_trend()
-    print(res_total.to_string(index=False))
-    
-    print("\n" + "-" * 50)
-    print("EACH CODE TREND ANALYSIS RESULT:")
-    print("-" * 50)
-    res_each = each_code_trend()
-    print(res_each.to_string(index=False))
+df_input = input_table.copy()
+res_total = total_trend(df_input)
+res_each = each_code_trend(df_input)
