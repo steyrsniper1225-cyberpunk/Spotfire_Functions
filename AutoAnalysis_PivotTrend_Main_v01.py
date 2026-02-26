@@ -11,15 +11,10 @@ def get_dummy_total_trend():
     return pd.DataFrame({
         'OBJECT': ['Total_Trend'],
         'WINDOW': ['-'],
-        'DPU_SUM': [0.0],
-        'Z_SCORE': [0.0],
         'DEGREE': [0.0],
         'TREND': ['-'],
-        'FLUCTUATION': ['-'],
         'DESCRIPTION': ['No Data Available']
     }).astype({
-        'DPU_SUM': 'float64', 
-        'Z_SCORE': 'float64', 
         'DEGREE': 'float64'
     })
 
@@ -98,22 +93,17 @@ def total_trend(df_input):
             fluctuated_windows.append(windows[i])
 
     if fluctuated_windows:
-        fluct_status = "Yes"
         # 변동이 감지된 모든 Window를 리스트업하여 설명에 포함
         fluct_desc = f"{', '.join(fluctuated_windows)}에서 DPU 변동이 관찰됩니다"
     else:
-        fluct_status = "No"
         fluct_desc = "정상 범위 내 변동"
 
     # 6. Format Result
     result = pd.DataFrame({
         'OBJECT': ['Total_Trend'],
-        'WINDOW': [windows[-1]],
-        'DPU_SUM': [dpu_values[-1]],
-        'Z_SCORE': [z_score[-1]],
+        'WINDOW': [f"최근 {len(windows)}일"],
         'DEGREE': [degree],
         'TREND': [trend_status],
-        'FLUCTUATION': [fluct_status],
         'DESCRIPTION': [f"{trend_desc} | {fluct_desc}"]
     })
     
