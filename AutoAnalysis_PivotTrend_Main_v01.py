@@ -90,11 +90,17 @@ def total_trend(df_input):
         trend_status, trend_desc = "유지", "최근 6일간 DPU가 유지되고 있습니다"
 
     # Fluctuation Logic (Difference between current and previous day Z-Score)
-    latest_z = z_scores[-1]
-    prev_z = z_scores[-2]
-    if abs(latest_z - prev_z) >= 2.0:
+    fluctuated_windows = []
+    # 1번째 인덱스부터 마지막까지 순회하며 이전 Window와의 Z-Score 차이 절대값을 계산
+    for i in range(1, len(z_scores)):
+        diff = abs(z_scores[i] - z_scores[i-1])
+        if diff >= 2.0:
+            fluctuated_windows.append(windows[i])
+
+    if fluctuated_windows:
         fluct_status = "Yes"
-        fluct_desc = f"{windows[-1]}에서 DPU 변동이 관찰됩니다"
+        # 변동이 감지된 모든 Window를 리스트업하여 설명에 포함
+        fluct_desc = f"{', '.join(fluctuated_windows)}에서 DPU 변동이 관찰됩니다"
     else:
         fluct_status = "No"
         fluct_desc = "정상 범위 내 변동"
@@ -104,7 +110,7 @@ def total_trend(df_input):
         'OBJECT': ['Total_Trend'],
         'WINDOW': [windows[-1]],
         'DPU_SUM': [dpu_values[-1]],
-        'Z_SCORE': [latest_z],
+        'Z_SCORE': [z_score[-1]],
         'DEGREE': [degree],
         'TREND': [trend_status],
         'FLUCTUATION': [fluct_status],
