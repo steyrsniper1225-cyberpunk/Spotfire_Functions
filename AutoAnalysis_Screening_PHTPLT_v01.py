@@ -38,8 +38,10 @@ def analyze_photo_unit_anomalies(df):
     req_cols = ['MODEL', 'PROCESS', 'LINE', 'MACHINE', 'MACHINE_ID', 'CODE', 'Glass_ID', 'DEFECT_QTY', 'WEEK']
     if not all(c in df_pht.columns for c in req_cols):
         return pd.DataFrame([{
-            'Target_EQP': '-', 'Pattern': '-', 'Code': '-', 
-            'Story': 'Required columns missing (Need DEFECT_QTY, Glass_ID, etc.)', 'Contribution_Pct': 0.0, 'Priority': '-'
+            'MACHINE_ID': '-',
+            'LOGIC': '-',
+            'CODE': '-', 
+            'NOTE': 'No Date/Window Column found'
         }])
 
     # 4. PHT 공정 및 대상 Unit(VCD, SHP, SCP) 필터링
@@ -48,8 +50,10 @@ def analyze_photo_unit_anomalies(df):
     
     if df_pht.empty:
         return pd.DataFrame([{
-            'Target_EQP': '-', 'Pattern': '-', 'Code': '-', 
-            'Story': 'No PHT data found', 'Contribution_Pct': 0.0, 'Priority': '-'
+            'MACHINE_ID': '-',
+            'LOGIC': '-',
+            'CODE': '-', 
+            'NOTE': 'No PHT data found'
         }])
 
     # 5. DPU 계산 함수 (중복 Row 대응)
@@ -77,31 +81,30 @@ def analyze_photo_unit_anomalies(df):
         pivot_z = dpu_weekly.pivot_table(index=['MODEL', 'LINE', 'MACHINE', 'MACHINE_ID', 'CODE'], columns='WEEK', values='Z_SCORE').reset_index()
         pivot_dpu = dpu_weekly.pivot_table(index=['MODEL', 'LINE', 'MACHINE', 'MACHINE_ID', 'CODE'], columns='WEEK', values='DPU').reset_index()
         
-        if all(w in pivot_z.columns for w in [w_2, w_1, w_0]):
+        if all(w in pivot_dpu.columns for w in [w_2, w_1, w_0]):
             # Case 1: 3주간 지속적으로 높은 불량
-            for (model, line, unit, code), group in pivot_z.groupby(['MODEL', 'LINE', 'MACHINE', 'CODE']):
-                for _, row in group.iterrows():
-                    m_id = row['MACHINE_ID']
-                    z_vals = [row[w_2], row[w_1], row[w_0]]
+            for (model, line, unit, code), group_dpu in pivot_dpu.groupby(['MODEL', 'LINE', 'MACHINE', 'CODE']):
+                if len(group_dpu) > 1:
+                    max_dpu_w2 = group_dpu[w_2].max()
+                    max_dpu_w1 = group_dpu[w_1].max()
+                    max_dpu_w0 = group_dpu[w_0].max()
                     
-                    if all(pd.notna(z) for z in z_vals):
-                        avg_z = np.mean(z_vals)
+                    for _, row in group_dpu.iterrows():
+                        m_id = row['MACHINE_ID']
+                        v2, v1, v0 = row[w_2], row[w_1], row[w_0]
                         
-                        dpu_row = pivot_dpu[(pivot_dpu['MACHINE_ID'] == m_id) & (pivot_dpu['CODE'] == code)].iloc[0]
-                        current_group_dpu = pivot_dpu[(pivot_dpu['MODEL']==model) & (pivot_dpu['LINE']==line) & (pivot_dpu['MACHINE']==unit) & (pivot_dpu['CODE']==code)]
-                        
-                        avg_group_dpu = current_group_dpu[w_0].mean()
-                        machine_dpu_last = dpu_row[w_0]
-                        diff_last = machine_dpu_last - avg_group_dpu
-                        
-                        if avg_z >= 0.3 or diff_last >= 0.05:
-                            records.append({
-                                'Target_EQP': m_id, 
-                                'Pattern': f"PHT_Unit_Case1 ({unit})",
-                                'Code': code,
-                                'Story': f"[{model}] {line} 라인 {unit} Unit 중 해당 설비가 '{code}' CODE 에 대해 지속적 고불량 (3주 Avg Z: {avg_z:.2f}, 최근 Diff: {diff_last:.4f}).",
-                                'Contribution_Pct': np.nan, 'Priority': 'High'
-                            })
+                        if pd.notna(v2) and pd.notna(v1) and pd.notna(v0):
+                            if v2 == max_dpu_w2 and v1 == max_dpu_w1 and v0 == max_dpu_w0 and v0 > 0:
+                                
+                                z_row = pivot_z[(pivot_z["MACHINE_ID"] == m_id) & (pivot_z["CODE"] == code)].iloc[0]
+                                avg_z = np.mean([z_row[w_2], z_row[w_1], z_row[w_0]])
+                                
+                                records.append({
+                                        'MACHINE_ID': m_id, 
+                                        'LOGIC': "L01",
+                                        'CODE': code,
+                                        'NOTE': f"[{model}] {m_id} '{code}' 지속 Worst (최근 DPU : {v0:.2f}, 최근 Z : {z_row[w_0]:.2f}",
+                                })
             
             # Case 2: 3주 연속 증가
             for (model, line, unit, code), group in pivot_dpu.groupby(['MODEL', 'LINE', 'MACHINE', 'CODE']):
@@ -111,11 +114,10 @@ def analyze_photo_unit_anomalies(df):
                     if pd.notna(v2) and pd.notna(v1) and pd.notna(v0):
                         if v2 < v1 < v0 and (v0 - v2) >= 0.05:
                             records.append({
-                                'Target_EQP': m_id, 
-                                'Pattern': f"PHT_Unit_Case2 ({unit})",
-                                'Code': code,
-                                'Story': f"[{model}] {line} 라인 {unit} Unit 중 해당 설비의 '{code}' CODE DPU가 {v2:.4f} -> {v1:.4f} -> {v0:.4f}로 3주 연속 증가 추세임.",
-                                'Contribution_Pct': np.nan, 'Priority': 'High'
+                                'MACHINE_ID': m_id, 
+                                'LOGIC': "L02",
+                                'CODE': code,
+                                'NOTE': f"[{model}] {m_id} '{code}' {v2:.2f} -> {v1:.2f} -> {v0:.2f}로 연속 증가 추세",
                             })
 
     # 6. Case 3: Z-value shift (TIMESTAMP 컬럼이 존재할 때만 실행)
