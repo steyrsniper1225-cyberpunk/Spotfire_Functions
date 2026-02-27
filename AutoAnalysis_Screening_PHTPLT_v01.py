@@ -121,63 +121,69 @@ def analyze_photo_unit_anomalies(df):
                             })
 
     # 6. Case 3: Z-value shift (TIMESTAMP 컬럼이 존재할 때만 실행)
-    if 'TIMESTAMP' in df_pht.columns and pd.api.types.is_datetime64_any_dtype(df_pht['TIMESTAMP']):
-        max_date = df_pht['TIMESTAMP'].max()
-        past_start, past_end = max_date - pd.Timedelta(days=14), max_date - pd.Timedelta(days=8)
-        curr_start, curr_end = max_date - pd.Timedelta(days=7), max_date
+    max_date = df_pht['TIMESTAMP'].max()
+    past_start, past_end = max_date - pd.Timedelta(days=14), max_date - pd.Timedelta(days=8)
+    curr_start, curr_end = max_date - pd.Timedelta(days=7), max_date
         
-        df_pht['PERIOD'] = 'Ignore'
-        df_pht.loc[(df_pht['TIMESTAMP'] >= past_start) & (df_pht['TIMESTAMP'] <= past_end), 'PERIOD'] = 'PAST'
-        df_pht.loc[(df_pht['TIMESTAMP'] > curr_start) & (df_pht['TIMESTAMP'] <= curr_end), 'PERIOD'] = 'CURR'
+    df_pht['PERIOD'] = 'Ignore'
+    df_pht.loc[(df_pht['TIMESTAMP'] >= past_start) & (df_pht['TIMESTAMP'] <= past_end), 'PERIOD'] = 'PAST'
+    df_pht.loc[(df_pht['TIMESTAMP'] > curr_start) & (df_pht['TIMESTAMP'] <= curr_end), 'PERIOD'] = 'CURR'
         
-        df_period = df_pht[df_pht['PERIOD'].isin(['PAST', 'CURR'])]
-        if not df_period.empty:
-            dpu_period = df_period.groupby(['PERIOD', 'MODEL', 'LINE', 'MACHINE', 'MACHINE_ID', 'CODE']).apply(calc_dpu).reset_index(name='DPU')
-            dpu_period['Z_SCORE'] = dpu_period.groupby(['PERIOD', 'MODEL', 'LINE', 'MACHINE', 'CODE'])['DPU'].transform(
-                lambda x: (x - x.mean()) / (x.std() + 0.0001) if len(x) > 1 else 0
-            )
+    df_period = df_pht[df_pht['PERIOD'].isin(['PAST', 'CURR'])]
+    
+    if not df_period.empty:
+        dpu_period = df_period.groupby(['PERIOD', 'MODEL', 'LINE', 'MACHINE', 'MACHINE_ID', 'CODE']).apply(calc_dpu).reset_index(name='DPU')
+        flass_cnt_period = df_period.groupby(['PERIOD', 'MODEL', 'LINE', 'MACHINE', 'MACHINE_ID', 'CODE'])["Glass_ID"].nunique().reset_index(name='GLASS_CNT')
+        dpu_period = pd.merge(dpu_period, glass_cnt_period, on = ['PERIOD', 'MODEL', 'LINE', 'MACHINE', 'MACHINE_ID', 'CODE'])
+        
+        dpu_period['Z_SCORE'] = dpu_period.groupby(['PERIOD', 'MODEL', 'LINE', 'MACHINE', 'CODE'])['DPU'].transform(
+            lambda x: (x - x.mean()) / (x.std() + 0.0001) if len(x) > 1 else 0
+        )
             
-            pivot_shift_z = dpu_period.pivot_table(index=['MODEL', 'LINE', 'MACHINE', 'MACHINE_ID', 'CODE'], columns='PERIOD', values='Z_SCORE').reset_index()
-            pivot_shift_dpu = dpu_period.pivot_table(index=['MODEL', 'LINE', 'MACHINE', 'MACHINE_ID', 'CODE'], columns='PERIOD', values='DPU').reset_index()
+        pivot_shift_z = dpu_period.pivot_table(index=['MODEL', 'LINE', 'MACHINE', 'MACHINE_ID', 'CODE'], columns='PERIOD', values='Z_SCORE').reset_index()
+        pivot_shift_dpu = dpu_period.pivot_table(index=['MODEL', 'LINE', 'MACHINE', 'MACHINE_ID', 'CODE'], columns='PERIOD', values='DPU').reset_index()
+        pivot_shift_glass = dpu_period.pivot_table(index=['MODEL', 'LINE', 'MACHINE', 'MACHINE_ID', 'CODE'], columns='PERIOD', values='GLASS_CNT').reset_index()
             
-            if 'PAST' in pivot_shift_z.columns and 'CURR' in pivot_shift_z.columns:
-                for i, row in pivot_shift_z.iterrows():
-                    z_past, z_curr = row['PAST'], row['CURR']
-                    code = row['CODE']
-                    if pd.notna(z_past) and pd.notna(z_curr):
-                        shift_delta_z = z_curr - z_past
+        if 'PAST' in pivot_shift_z.columns and 'CURR' in pivot_shift_z.columns:
+            for i, row in pivot_shift_z.iterrows():
+                z_past, z_curr = row['PAST'], row['CURR']
+                code = row['CODE']
+                
+                if pd.notna(z_past) and pd.notna(z_curr):
+                    shift_delta_z = z_curr - z_past
                         
-                        dpu_row = pivot_shift_dpu.iloc[i]
-                        dpu_past, dpu_curr = dpu_row['PAST'], dpu_row['CURR']
-                        shift_delta_dpu = dpu_curr - dpu_past
+                    dpu_row = pivot_shift_dpu.iloc[i]
+                    dpu_past, dpu_curr = dpu_row['PAST'], dpu_row['CURR']
+                    
+                    shift_delta_dpu = dpu_curr - dpu_past
+                    
+                    glass_row = pivot_shift_glass.iloc[i]
+                    glass_past, glass_curr = glass_row['PAST'], glass_row['CURR']
                         
-                        if abs(shift_delta_z) > 0.3 or abs(shift_delta_dpu) >= 0.05:
-                            direction = "상승(악화)" if shift_delta_dpu > 0 else "감소(개선)"
-                            records.append({
-                                'Target_EQP': row['MACHINE_ID'], 
-                                'Pattern': f"PHT_Unit_Case3 ({row['MACHINE']})",
-                                'Code': code,
-                                'Story': f"[{row['MODEL']}] {row['LINE']} 라인 {row['MACHINE']} Unit 중 해당 설비의 '{code}' CODE DPU가 {direction}됨 (Delta: {shift_delta_dpu:.4f}, Z-Shift: {shift_delta_z:.2f}).",
-                                'Contribution_Pct': np.nan, 'Priority': 'Medium' if shift_delta_dpu > 0 else 'Low'
-                            })
+                    if abs(shift_delta_z) > 2.0 or abs(shift_delta_dpu) >= 0.05 and (shift_delta_dpu > 0) and (glass_past >=30 and glass_curr >=30):
+                        direction = "증가" if shift_delta_dpu > 0 else "감소"
+                        records.append({
+                            'MACHINE_ID': row['MACHINE_ID'], 
+                            'LOGIC': "L03",
+                            'CODE': code,
+                            'NOTE': f"[{row['MODEL']}] {row['MACHINE_ID']} '{CODE}' {direction} (Delta : {shift_delta_dpu:.2f}, Z-Shift : {shift_delta_z:.2f}, GLS(Before/After) : {glass_past:.0f}, {glass_curr:.0f})"
+                        })
 
     # 7. 결과 DataFrame 생성
     if not records:
         df_result = pd.DataFrame([{
-            'Target_EQP': '-', 'Pattern': '-', 'Code': '-', 
-            'Story': 'No Anomalies Detected', 'Contribution_Pct': 0.0, 'Priority': '-'
+            'MACHINE_ID': '-',
+            'LOGIC': '-',
+            'CODE': '-', 
+            'NOTE': 'No Date/Window Column found'
         }])
     else:
         df_result = pd.DataFrame(records)
-        df_result = df_result.drop_duplicates(subset=['Target_EQP', 'Pattern', 'Code'])
+        df_result = df_result.drop_duplicates(subset=['MACHINE_ID', 'LOGIC', 'CODE'])
     
     return df_result
 
 # ==========================================
 # [Spotfire Entry Point]
 # ==========================================
-# Spotfire Input: df (Table)
-# Spotfire Output: result_pht (Table)
-
-if 'df' in locals():
-    result_pht = analyze_photo_unit_anomalies(df)
+output_table = analyze_photo_unit_anomalies(input_table)
