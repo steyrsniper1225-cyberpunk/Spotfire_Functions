@@ -130,9 +130,9 @@ def each_code_trend(df_input):
         return get_dummy_each_code_trend()
 
     # Get Total Sum per Window as Baseline
-    total_agg = df.groupby('WINDOW')['DPU'].sum().sort_values()
-    latest_windows = total_agg.tail(6).index.tolist()
-    total_baseline = total_agg.tail(6).values
+    total_agg = df.groupby('WINDOW')['DPU'].sum().tail(6)
+    latest_windows = total_agg.index.tolist()
+    total_baseline = total_agg.values
     
     if len(latest_windows) < 2:
         return get_dummy_each_code_trend()
@@ -152,7 +152,7 @@ def each_code_trend(df_input):
             correl = np.corrcoef(code_values, total_baseline)[0, 1]
         
         # Logic Evaluation
-        strength = "High" if correl >= 0.80 else "Low"
+        strength = "High" if abs(correl) >= 0.70 else "Low"
         desc = f"최근 6일간 DPU가 Total_Trend와 {'높은' if strength == 'High' else '낮은'} 상관관계를 보입니다"
         
         results.append({
