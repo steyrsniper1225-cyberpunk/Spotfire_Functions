@@ -152,7 +152,7 @@ def each_code_trend(df_input):
             correl = np.corrcoef(code_values, total_baseline)[0, 1]
         
         # Logic Evaluation
-        strength = "High" if abs(correl) >= 0.70 else "Low"
+        strength = "High" if correl >= 0.80 else "Low"
         desc = f"최근 6일간 DPU가 Total_Trend와 {'높은' if strength == 'High' else '낮은'} 상관관계를 보입니다"
         
         results.append({
