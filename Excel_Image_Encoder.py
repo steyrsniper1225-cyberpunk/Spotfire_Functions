@@ -40,7 +40,7 @@ for image in ws._images:
         row_idx = image.anchor._from.row
         
         # 이미지 바이트 데이터 읽기
-        img_data = image.ref.read()
+        img_data = image.ref.getvalue()
         
         # Base64 변환
         base64_str = convert_image_to_base64(img_data)
