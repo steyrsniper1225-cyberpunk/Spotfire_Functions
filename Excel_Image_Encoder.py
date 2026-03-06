@@ -68,7 +68,7 @@ for i, file_path in enumerate(xlsx_files):
             
             # 지정된 타겟 컬럼에 있는 이미지만 처리
             if col_letter in TARGET_IMAGE_COLS:
-                img_data = image.ref.read()
+                img_data = image.ref.getvalue()
                 base64_str = convert_image_to_base64(img_data)
                 
                 # 데이터프레임 인덱스 (엑셀 1행이 헤더인 경우 -1)
