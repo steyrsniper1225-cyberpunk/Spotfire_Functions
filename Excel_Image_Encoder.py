@@ -4,6 +4,7 @@ import base64
 from PIL import Image
 import io
 import os
+from tqdm import tqdm
 
 # Linux 클라우드 환경 경로 설정
 BASE_DIR = "/data_home/user/2025/username/Python"
@@ -30,11 +31,12 @@ df = pd.read_excel(INPUT_FILE, usecols=lambda x: x not in ['A', 'Unnamed: 0'])
 # 2. Excel 이미지 추출 (openpyxl 3.1.5)
 wb = openpyxl.load_workbook(INPUT_FILE, data_only=True)
 ws = wb.active
+print("[DONE] Excel File Opening Complete")
 
 image_mapping = {}
 
 # ws._images에 포함된 객체에서 데이터와 위치(Row) 추출
-for image in ws._images:
+for image in tqdm(ws._images, desc = "Encoding Image by Base64", unit = "ea"):
     try:
         # openpyxl의 이미지 anchor 행(row) 인덱스 (0부터 시작)
         row_idx = image.anchor._from.row
@@ -49,12 +51,14 @@ for image in ws._images:
         df_idx = row_idx - 1
         image_mapping[df_idx] = base64_str
     except Exception as e:
-        print(f"Row {row_idx} 이미지 처리 오류: {e}")
+        print(f"\nRow {row_idx} 이미지 처리 오류: {e}")
 
 wb.close()
+print("[DONE] Excel File Closed")
 
 # 3. DataFrame에 Base64 이미지 컬럼 매핑
 df['검사_Image_Base64'] = df.index.map(image_mapping)
+print("[DONE] Base64 Encoding Complete")
 
 # 4. Spotfire 로드용 CSV 저장
 df.to_csv(OUTPUT_FILE, index=False, encoding='utf-8-sig')
